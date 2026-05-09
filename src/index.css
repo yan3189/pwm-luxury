@@ -1,36 +1,40 @@
 @import "tailwindcss";
 
-@layer base {
-  body {
-    background-color: black;
-    color: white;
-    font-family: 'Poppins', sans-serif;
-  }
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: #1f1f1f;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #eab308;
-    border-radius: 10px;
-  }
+/* Warna kustom bisa didefinisikan di sini dengan @theme */
+@theme {
+  --color-holywings-yellow: #FFD700;
+  --color-holywings-orange: #FF8C00;
+  --color-holywings-black: #050505;
+  --color-holywings-gray: #1A1A1A;
+  
+  --font-display: "Bebas Neue", sans-serif;
+  --font-body: "Poppins", sans-serif;
 }
 
-@layer utilities {
-  .animate-bounce {
-    animation: bounce 1s infinite;
-  }
-  @keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(10px); }
-  }
-  .animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-  }
+body {
+  background-color: var(--color-holywings-black);
+  color: white;
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+/* Animasi kustom */
+@keyframes glow {
+  0%, 100% { text-shadow: 0 0 5px #FFD700, 0 0 10px #FF8C00; }
+  50% { text-shadow: 0 0 20px #FFD700, 0 0 30px #FF8C00; }
+}
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(10px); }
+}
+.animate-bounce {
+  animation: bounce 1s infinite;
 }
