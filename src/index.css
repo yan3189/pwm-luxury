@@ -1,19 +1,18 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  body {
-    @apply bg-black text-white font-body;
-  }
-  /* custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-gray-900;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-yellow-500 rounded-full;
-  }
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: 'Poppins', sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background-color: #111827;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #eab308;
+  border-radius: 9999px;
 }

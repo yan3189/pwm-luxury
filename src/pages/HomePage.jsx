@@ -24,13 +24,13 @@ export default function HomePage() {
             alt="hero background"
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/40"></div>
+          <div className="absolute inset-0 bg-linear-to-t from-black via-black/70 to-black/40"></div>
         </div>
 
         {/* Konten hero */}
         <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
           <h1 className="text-5xl md:text-7xl font-display font-bold tracking-wider">
-            <span className="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent animate-glow">
+            <span className="bg-linear-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent animate-glow">
               EKOSISTEM STORE
             </span>
             <br />
@@ -40,7 +40,7 @@ export default function HomePage() {
             Satu member, ribuan keuntungan di semua store partner. Kumpulkan poin, tukar voucher, nikmati pengalaman berbelanja yang tak terlupakan.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
-            <button className="bg-gradient-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition">
+            <button className="bg-linear-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition">
               Daftar Member <ArrowRight size={18} />
             </button>
             <button className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition">
@@ -60,7 +60,7 @@ export default function HomePage() {
       {/* ========== STORE PARTNER SECTION ========== */}
       <section className="py-20 px-4 max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-display font-bold inline-block bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+          <h2 className="text-3xl md:text-4xl font-display font-bold inline-block bg-linear-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
             Store Partner Kami
           </h2>
           <p className="text-gray-400 mt-2">Temukan store terdekat dan nikmati layanan eksklusif</p>
@@ -88,7 +88,7 @@ export default function HomePage() {
       </section>
 
       {/* ========== CTA BANNER ========== */}
-      <section className="py-16 mx-4 md:mx-8 my-10 rounded-3xl bg-gradient-to-r from-yellow-600/20 via-orange-600/20 to-yellow-600/20 border border-yellow-500/30">
+      <section className="py-16 mx-4 md:mx-8 my-10 rounded-3xl bg-linear-to-r from-yellow-600/20 via-orange-600/20 to-yellow-600/20 border border-yellow-500/30">
         <div className="max-w-4xl mx-auto text-center px-4">
           <h3 className="text-2xl md:text-3xl font-display">Siap menjadi bagian dari ekosistem PWM?</h3>
           <p className="text-gray-300 mt-2">Daftarkan store Anda sekarang dan raih lebih banyak pelanggan loyal.</p>

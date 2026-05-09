@@ -2,7 +2,8 @@
 import Navbar from '../components/Navbar';
 
 export default function StoresPage() {
-  const stores = [ ... ] // sama seperti dummyStores, bisa ditambah
+  const stores = [] 
+  // sama seperti dummyStores, bisa ditambah
   return (
     <div className="bg-black min-h-screen pt-20">
       <Navbar />
