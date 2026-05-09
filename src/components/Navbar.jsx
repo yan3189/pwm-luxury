@@ -1,7 +1,6 @@
 // ========== KOMPONEN NAVBAR ==========
-// Navbar dengan efek blur dan hamburger menu untuk mobile
 import { useState } from 'react';
-import { Menu, X, ShoppingBag, User } from 'lucide-react';
+import { Menu, X, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Navbar() {
@@ -26,7 +25,7 @@ export default function Navbar() {
           </div>
 
           {/* Mobile button */}
-          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden">
+          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white">
             {isOpen ? <X /> : <Menu />}
           </button>
         </div>
