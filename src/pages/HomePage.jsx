@@ -76,7 +76,6 @@ export default function HomeHolywings() {
             <p className="text-yellow-500 text-xs font-semibold tracking-wide">EXPLORE OUR STORES</p>
           </div>
           <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">Featured Stores</h2>
-          <p className="text-gray-400 mt-2">Arahkan kursor atau sentuh card untuk melihat detail store</p>
         </div>
 
         {/* CAROUSEL COMPONENT */}
@@ -93,7 +92,7 @@ export default function HomeHolywings() {
             <p className="text-yellow-500 text-xs font-semibold tracking-wide">STORE UPDATES</p>
           </div>
           <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">News & Articles</h2>
-          <p className="text-gray-400 mt-1">Informasi terbaru dari store partner kami</p>
+          
         </div>
 
         <NewsCarousel />

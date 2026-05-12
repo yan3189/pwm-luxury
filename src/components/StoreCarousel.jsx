@@ -1,14 +1,17 @@
 // ========== FILE: src/components/StoreCarousel.jsx ==========
-import { useState, useRef } from 'react';
+// Holywings-style card - dengan reset state saat slide berubah
+import { useState, useRef, useEffect } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { Navigation, Pagination } from 'swiper/modules';
+import { Pagination } from 'swiper/modules';
 import { ChevronRight, MapPin } from 'lucide-react';
 
 import 'swiper/css';
-import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 
 export default function StoreCarousel() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const swiperRef = useRef(null);
+
   const stores = [
     {
       id: 1,
@@ -47,10 +50,15 @@ export default function StoreCarousel() {
     },
   ];
 
+  // Reset active state saat slide berubah
+  const handleSlideChange = (swiper) => {
+    setActiveIndex(swiper.activeIndex);
+  };
+
   return (
     <div className="w-full py-4">
       <Swiper
-        modules={[Navigation, Pagination]}
+        modules={[Pagination]}
         spaceBetween={12}
         slidesPerView={1.1}
         breakpoints={{
@@ -58,32 +66,22 @@ export default function StoreCarousel() {
           1024: { slidesPerView: 1.8, spaceBetween: 20 },
           1280: { slidesPerView: 2.2, spaceBetween: 24 },
         }}
-        navigation
         pagination={{ clickable: true }}
+        onSlideChange={handleSlideChange}
+        onSwiper={(swiper) => (swiperRef.current = swiper)}
         className="store-carousel"
       >
-        {stores.map((store) => (
+        {stores.map((store, idx) => (
           <SwiperSlide key={store.id}>
-            <HolywingsCard store={store} />
+            <HolywingsCard 
+              store={store} 
+              isActive={idx === activeIndex}
+            />
           </SwiperSlide>
         ))}
       </Swiper>
 
       <style>{`
-        .store-carousel .swiper-button-next,
-        .store-carousel .swiper-button-prev {
-          color: #FFD700;
-          background: rgba(0,0,0,0.5);
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          backdrop-filter: blur(4px);
-        }
-        .store-carousel .swiper-button-next:after,
-        .store-carousel .swiper-button-prev:after {
-          font-size: 16px;
-          font-weight: bold;
-        }
         .store-carousel .swiper-pagination-bullet {
           background: white;
           opacity: 0.5;
@@ -97,50 +95,68 @@ export default function StoreCarousel() {
   );
 }
 
-// ===== INI ADALAH HolywingsCard (masih di file yang sama) =====
-function HolywingsCard({ store }) {
-  const [isActive, setIsActive] = useState(false);
+// ===== HOLYWINGS CARD (dengan prop isActive dari parent) =====
+function HolywingsCard({ store, isActive }) {
+  const [isHovering, setIsHovering] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const videoRef = useRef(null);
 
+  // Untuk desktop: hover
   const handleMouseEnter = () => {
-    setIsActive(true);
-    if (videoRef.current && !videoError) {
-      videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
-    }
+    setIsHovering(true);
   };
 
   const handleMouseLeave = () => {
-    setIsActive(false);
+    setIsHovering(false);
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
     }
   };
 
-  const handleTouchStart = () => {
+  // Untuk mobile: tap (menggunakan isActive dari swiper)
+  useEffect(() => {
     if (!isActive) {
-      setIsActive(true);
-      if (videoRef.current && !videoError) {
-        videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
+      // Jika slide tidak aktif, reset video dan state
+      setIsHovering(false);
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
       }
     }
-  };
+  }, [isActive]);
+
+  // Jalankan video saat isHovering aktif
+  useEffect(() => {
+    if (isHovering && videoRef.current && !videoError) {
+      videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
+    } else if (!isHovering && videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [isHovering, videoError]);
 
   const handleVideoError = () => {
     setVideoError(true);
     console.log("Video failed to load:", store.previewVideo);
   };
 
+  // Untuk mobile: tap pada card (aktifkan hover state)
+  const handleTap = () => {
+    setIsHovering(!isHovering);
+  };
+
+  const showContent = isHovering || isActive;
+
   return (
     <div
       className="relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onTouchStart={handleTouchStart}
-      style={{ aspectRatio: '3/4' }}
+      onClick={handleTap}
+      style={{ aspectRatio: '4/5' }} // Diubah dari 3/4 ke 4/5 agar lebih panjang
     >
-      {!isActive || videoError ? (
+      {!showContent || videoError ? (
         <img
           src={store.coverImage}
           alt={store.name}
@@ -155,23 +171,24 @@ function HolywingsCard({ store }) {
           muted
           playsInline
           preload="auto"
-          autoPlay
           onError={handleVideoError}
         />
       )}
 
+      {/* Overlay gradien */}
       <div
         className={`absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent transition-opacity duration-300 ${
-          isActive && !videoError ? 'opacity-100' : 'opacity-0'
+          showContent && !videoError ? 'opacity-100' : 'opacity-0'
         }`}
       ></div>
 
+      {/* Konten (nama store, lokasi, tombol) */}
       <div
         className={`absolute bottom-0 left-0 right-0 p-5 transition-all duration-300 transform ${
-          isActive && !videoError ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
+          showContent && !videoError ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
         }`}
       >
-        <h3 className="text-2xl md:text-3xl font-display font-bold text-white tracking-wide">
+        <h3 className="text-xl md:text-2xl font-display font-bold text-white tracking-wide">
           {store.name}
         </h3>
         <div className="flex items-center gap-1 text-gray-300 text-sm mt-1">

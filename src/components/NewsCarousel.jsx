@@ -60,8 +60,8 @@ export default function NewsCarousel() {
 
   return (
     <div className="w-full py-4">
-      <Swiper
-        modules={[Navigation, Pagination]}
+            <Swiper
+        modules={[Pagination]}  // Hanya Pagination, Navigation dihapus
         spaceBetween={16}
         slidesPerView={1.1}
         breakpoints={{
@@ -69,7 +69,6 @@ export default function NewsCarousel() {
           1024: { slidesPerView: 2.2, spaceBetween: 24 },
           1280: { slidesPerView: 2.8, spaceBetween: 24 },
         }}
-        navigation
         pagination={{ clickable: true }}
         className="news-carousel"
       >
