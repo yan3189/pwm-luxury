@@ -1,5 +1,5 @@
 // ========== FILE: src/components/StoreCarousel.jsx ==========
-// Holywings-style card - dengan reset state saat slide berubah
+// Holywings-style card - dengan delay 1 detik sebelum video play
 import { useState, useRef, useEffect } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Pagination } from 'swiper/modules';
@@ -12,7 +12,7 @@ export default function StoreCarousel() {
   const [activeIndex, setActiveIndex] = useState(0);
   const swiperRef = useRef(null);
 
-  const stores = [
+ const stores = [
     {
       id: 1,
       name: 'PWM SENAYAN CITY',
@@ -50,7 +50,6 @@ export default function StoreCarousel() {
     },
   ];
 
-  // Reset active state saat slide berubah
   const handleSlideChange = (swiper) => {
     setActiveIndex(swiper.activeIndex);
   };
@@ -95,68 +94,90 @@ export default function StoreCarousel() {
   );
 }
 
-// ===== HOLYWINGS CARD (dengan prop isActive dari parent) =====
+// ===== HOLYWINGS CARD dengan delay 1 detik =====
 function HolywingsCard({ store, isActive }) {
-  const [isHovering, setIsHovering] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [showContent, setShowContent] = useState(false);
   const videoRef = useRef(null);
+  const delayTimerRef = useRef(null);
 
-  // Untuk desktop: hover
-  const handleMouseEnter = () => {
-    setIsHovering(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovering(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  // Untuk mobile: tap (menggunakan isActive dari swiper)
+  // Reset dan handle delay saat isActive berubah
   useEffect(() => {
-    if (!isActive) {
-      // Jika slide tidak aktif, reset video dan state
-      setIsHovering(false);
+    if (isActive) {
+      // Reset state
+      setShowVideo(false);
+      setShowContent(false);
+      
+      // Hentikan video jika sedang berjalan
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.currentTime = 0;
       }
+
+      // Hapus timer sebelumnya jika ada
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+      }
+
+      // Timer 1 detik: setelah itu tampilkan video dan konten
+      delayTimerRef.current = setTimeout(() => {
+        setShowVideo(true);
+        setShowContent(true);
+      }, 1000);
+    } else {
+      // Jika tidak aktif, reset semua
+      setShowVideo(false);
+      setShowContent(false);
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+      }
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+      }
     }
+
+    // Cleanup timer saat komponen unmount atau isActive berubah lagi
+    return () => {
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+      }
+    };
   }, [isActive]);
 
-  // Jalankan video saat isHovering aktif
+  // Jalankan video saat showVideo menjadi true
   useEffect(() => {
-    if (isHovering && videoRef.current && !videoError) {
+    if (showVideo && videoRef.current && !videoError) {
       videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
-    } else if (!isHovering && videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
     }
-  }, [isHovering, videoError]);
+  }, [showVideo, videoError]);
 
   const handleVideoError = () => {
     setVideoError(true);
     console.log("Video failed to load:", store.previewVideo);
   };
 
-  // Untuk mobile: tap pada card (aktifkan hover state)
+  // Untuk desktop: hover (opsional, bisa diaktifkan jika mau)
+  // Untuk mobile: tap (alternatif jika swipe tidak dianggap)
   const handleTap = () => {
-    setIsHovering(!isHovering);
+    if (!showContent) {
+      setShowVideo(true);
+      setShowContent(true);
+      if (videoRef.current && !videoError) {
+        videoRef.current.play().catch(e => console.log("Autoplay failed:", e));
+      }
+    }
   };
-
-  const showContent = isHovering || isActive;
 
   return (
     <div
       className="relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       onClick={handleTap}
-      style={{ aspectRatio: '4/5' }} // Diubah dari 3/4 ke 4/5 agar lebih panjang
+      style={{ aspectRatio: '9/16' }} // Diubah ke 9:16 (lebih panjang seperti story Instagram)
     >
-      {!showContent || videoError ? (
+      {/* Tampilkan gambar jika video belum ditampilkan atau error */}
+      {(!showVideo || videoError) ? (
         <img
           src={store.coverImage}
           alt={store.name}
@@ -175,16 +196,16 @@ function HolywingsCard({ store, isActive }) {
         />
       )}
 
-      {/* Overlay gradien */}
+      {/* Overlay gradien - muncul hanya saat konten ditampilkan */}
       <div
-        className={`absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent transition-opacity duration-300 ${
+        className={`absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent transition-opacity duration-500 ${
           showContent && !videoError ? 'opacity-100' : 'opacity-0'
         }`}
       ></div>
 
-      {/* Konten (nama store, lokasi, tombol) */}
+      {/* Konten (nama store, lokasi, tombol) - muncul setelah delay */}
       <div
-        className={`absolute bottom-0 left-0 right-0 p-5 transition-all duration-300 transform ${
+        className={`absolute bottom-0 left-0 right-0 p-5 transition-all duration-500 transform ${
           showContent && !videoError ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
         }`}
       >
