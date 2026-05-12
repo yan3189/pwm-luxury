@@ -1,106 +1,110 @@
-// ========== HALAMAN HOME (HOLYWINGS STYLE) ==========
-import Navbar from '../components/Navbar';
-import { ArrowRight, Star, MapPin } from 'lucide-react';
+// ========== FILE: src/pages/HomeHolywings.jsx ==========
+// VERSI DENGAN ASUMSI DESAIN PREMIUM (NEON, BOLD, GLASSMORPHISM)
+import NavbarHolywings from '../components/Navbar';
+import NewsCarousel from '../components/NewsCarousel';
+import EventList from '../components/EventList';
+import StoreCarousel from '../components/StoreCarousel'
+import { ArrowRight, Star, MapPin, ChevronRight, Sparkles } from 'lucide-react';
 
-export default function HomePage() {
-  // Data dummy store
-  const dummyStores = [
-    { id: 1, name: 'PWM Senayan City', location: 'Jakarta Selatan', image: 'https://picsum.photos/id/104/400/300', rating: 4.8 },
-    { id: 2, name: 'PWM Kelapa Gading', location: 'Jakarta Utara', image: 'https://picsum.photos/id/106/400/300', rating: 4.7 },
-    { id: 3, name: 'PWM Surabaya', location: 'Surabaya Timur', image: 'https://picsum.photos/id/108/400/300', rating: 4.9 },
+export default function HomeHolywings() {
+  // Data dummy untuk store
+  const featuredStores = [
+    { id: 1, name: 'PWM SENAYAN CITY', location: 'Jakarta Selatan', image: 'https://images.unsplash.com/photo-1566417713940-fe9c9f0f9c2c?q=80&w=2070', rating: 4.8, tag: 'POPULAR' },
+    { id: 2, name: 'PWM KELAPA GADING', location: 'Jakarta Utara', image: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=2070', rating: 4.7, tag: 'NEW' },
+    { id: 3, name: 'PWM SURABAYA', location: 'Surabaya Timur', image: 'https://images.unsplash.com/photo-1534865819013-fcb4881ac473?q=80&w=2070', rating: 4.9, tag: 'TRENDING' },
   ];
 
   return (
     <div className="bg-black text-white">
-      <Navbar />
+      <NavbarHolywings />
       
-      {/* ========== HERO SECTION ========== */}
+      {/* ========== 1. HERO SECTION (PREMIUM LOOK) ========== */}
+      {/* Asumsi: background keramaian kota, overlay gelap, teks besar */}
       <section className="relative h-screen flex items-center justify-center overflow-hidden">
-        {/* Gambar background dari unsplash (gratis) */}
         <div className="absolute inset-0 z-0">
           <img 
-            src="https://images.unsplash.com/photo-1566417713940-fe9c9f0f9c2c?q=80&w=2070" 
-            alt="hero background"
+            src="https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?q=80&w=2070" 
+            alt="Hero Background"
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/40"></div>
+          <div className="absolute inset-0 bg-linear-to-t from-black via-black/80 to-black/50"></div>
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          <h1 className="text-5xl md:text-7xl font-display font-bold tracking-wider">
-            <span className="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent animate-pulse">
+        <div className="relative z-10 text-center px-4 max-w-5xl mx-auto">
+          {/* Badge kecil */}
+          <div className="inline-block mb-4 px-3 py-1 bg-yellow-500/10 backdrop-blur-sm rounded-full border border-yellow-500/30">
+            <p className="text-yellow-400 text-sm font-semibold tracking-wide">#NEVER STOP FLYING</p>
+          </div>
+          
+          {/* Efek Glow pada Teks Utama */}
+          <h1 className="text-6xl md:text-8xl font-display font-bold tracking-wider">
+            <span className="bg-linear-to-r from-yellow-400 via-orange-500 to-yellow-400 bg-clip-text text-transparent animate-pulse">
               EKOSISTEM STORE
             </span>
             <br />
             <span className="text-white">PWM</span>
           </h1>
-          <p className="mt-6 text-lg md:text-xl text-gray-200 max-w-2xl mx-auto">
-            Satu member, ribuan keuntungan di semua store partner. Kumpulkan poin, tukar voucher, nikmati pengalaman berbelanja yang tak terlupakan.
+          
+          <p className="mt-6 text-lg md:text-xl text-gray-300 max-w-2xl mx-auto">
+            Satu member, ribuan keuntungan di semua store partner. 
+            Kumpulkan poin, tukar voucher, nikmati pengalaman premium.
           </p>
+          
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
-            <button className="bg-gradient-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition">
-              Daftar Member <ArrowRight size={18} />
+            <button className="group bg-linear-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition duration-300 shadow-lg shadow-yellow-500/20">
+              Daftar Member <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
             </button>
-            <button className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition">
+            <button className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition duration-300 backdrop-blur-sm">
               Lihat Store
             </button>
           </div>
         </div>
 
-        {/* Scroll indicator */}
+        {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
-          <div className="w-6 h-10 border-2 border-white rounded-full flex justify-center">
-            <div className="w-1 h-3 bg-white rounded-full mt-2"></div>
+          <div className="w-6 h-10 border-2 border-white/50 rounded-full flex justify-center">
+            <div className="w-1 h-3 bg-yellow-500 rounded-full mt-2"></div>
           </div>
         </div>
       </section>
 
-      {/* ========== STORE PARTNER SECTION ========== */}
+      {/* ========== 2. FEATURED STORES ========== */}
+                 {/* ========== 2. FEATURED STORES (Holywings Style - Card tanpa teks, muncul saat hover) ========== */}
       <section className="py-20 px-4 max-w-7xl mx-auto">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-display font-bold inline-block bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
-            Store Partner Kami
-          </h2>
-          <p className="text-gray-400 mt-2">Temukan store terdekat dan nikmati layanan eksklusif</p>
+        <div className="mb-8">
+          <div className="inline-block mb-2 px-3 py-1 bg-yellow-500/10 rounded-full">
+            <p className="text-yellow-500 text-xs font-semibold tracking-wide">EXPLORE OUR STORES</p>
+          </div>
+          <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">Featured Stores</h2>
+          <p className="text-gray-400 mt-2">Arahkan kursor atau sentuh card untuk melihat detail store</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {dummyStores.map((store) => (
-            <div key={store.id} className="group bg-gray-900/50 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition-all duration-300 hover:-translate-y-2">
-              <div className="relative h-48 overflow-hidden">
-                <img src={store.image} alt={store.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
-                <div className="absolute top-3 right-3 bg-black/70 backdrop-blur px-2 py-1 rounded-full flex items-center gap-1 text-sm">
-                  <Star size={14} className="text-yellow-400 fill-yellow-400" /> {store.rating}
-                </div>
-              </div>
-              <div className="p-5">
-                <h3 className="text-xl font-bold">{store.name}</h3>
-                <div className="flex items-center gap-1 text-gray-400 text-sm mt-1">
-                  <MapPin size={14} /> {store.location}
-                </div>
-                <button className="mt-4 w-full bg-white/10 hover:bg-yellow-500 hover:text-black py-2 rounded-full transition font-medium">
-                  Kunjungi Store
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* CAROUSEL COMPONENT */}
+        <StoreCarousel />
       </section>
 
-      {/* ========== CTA BANNER ========== */}
-      <section className="py-16 mx-4 md:mx-8 my-10 rounded-3xl bg-gradient-to-r from-yellow-600/20 via-orange-600/20 to-yellow-600/20 border border-yellow-500/30">
-        <div className="max-w-4xl mx-auto text-center px-4">
-          <h3 className="text-2xl md:text-3xl font-display">Siap menjadi bagian dari ekosistem PWM?</h3>
-          <p className="text-gray-300 mt-2">Daftarkan store Anda sekarang dan raih lebih banyak pelanggan loyal.</p>
-          <button className="mt-6 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-8 rounded-full transition">
-            Hubungi Kami
-          </button>
+            {/* ========== 3. EVENT LIST SECTION ========== */}
+      <EventList />
+
+            {/* ========== 4. NEWS & ARTICLE SECTION ========== */}
+      <section className="py-16 px-4 max-w-7xl mx-auto">
+        <div className="mb-8">
+          <div className="inline-block mb-2 px-3 py-1 bg-yellow-500/10 rounded-full">
+            <p className="text-yellow-500 text-xs font-semibold tracking-wide">STORE UPDATES</p>
+          </div>
+          <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">News & Articles</h2>
+          <p className="text-gray-400 mt-1">Informasi terbaru dari store partner kami</p>
         </div>
+
+        <NewsCarousel />
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-8 text-center text-gray-500 text-sm">
-        © 2026 PWM Ecosystem. All rights reserved.
+      {/* ========== 4. FOOTER ========== */}
+      <footer className="border-t border-white/10 py-12 text-center text-gray-500 text-sm">
+        <div className="max-w-7xl mx-auto px-4">
+          <p className="mb-2">© 2026 PWM Ecosystem. All rights reserved.</p>
+          <p className="text-xs">#NeverStopFlying</p>
+        </div>
       </footer>
     </div>
   );

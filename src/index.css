@@ -38,3 +38,16 @@ h1, h2, h3, .font-display {
 .animate-bounce {
   animation: bounce 1s infinite;
 }
+
+/* Smooth transitions untuk semua elemen */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.store-carousel .swiper-slide {
+  transition: transform 0.3s ease;
+}
+
+.store-carousel .swiper-slide-active {
+  transform: scale(1.02);
+}

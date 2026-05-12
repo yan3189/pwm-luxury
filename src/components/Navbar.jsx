@@ -11,7 +11,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+          <Link to="/" className="text-2xl font-display tracking-wider bg-linear-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
             PWM
           </Link>
 
