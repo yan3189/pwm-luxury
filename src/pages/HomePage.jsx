@@ -3,7 +3,9 @@
 import NavbarHolywings from '../components/Navbar';
 import NewsCarousel from '../components/NewsCarousel';
 import EventList from '../components/EventList';
-import StoreCarousel from '../components/StoreCarousel'
+import StoreCarousel from '../components/StoreCarousel';
+import AllNews from '../components/AllNews';
+import LatestNewsCarousel from '../components/LatestNewsCarousel';
 import { ArrowRight, Star, MapPin, ChevronRight, Sparkles } from 'lucide-react';
 
 export default function HomeHolywings() {
@@ -85,17 +87,17 @@ export default function HomeHolywings() {
             {/* ========== 3. EVENT LIST SECTION ========== */}
       <EventList />
 
-            {/* ========== 4. NEWS & ARTICLE SECTION ========== */}
+            {/* ========== NEWS & ARTICLE SECTION ========== */}
       <section className="py-16 px-4 max-w-7xl mx-auto">
         <div className="mb-8">
           <div className="inline-block mb-2 px-3 py-1 bg-yellow-500/10 rounded-full">
             <p className="text-yellow-500 text-xs font-semibold tracking-wide">STORE UPDATES</p>
           </div>
           <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">News & Articles</h2>
-          
+         
         </div>
 
-        <NewsCarousel />
+        <LatestNewsCarousel />
       </section>
 
       {/* ========== 4. FOOTER ========== */}
