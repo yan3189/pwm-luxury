@@ -7,6 +7,7 @@ import StoreCarousel from '../components/StoreCarousel';
 import AllNews from '../components/AllNews';
 import LatestNewsCarousel from '../components/LatestNewsCarousel';
 import { ArrowRight, Star, MapPin, ChevronRight, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function HomeHolywings() {
   // Data dummy untuk store
@@ -94,8 +95,10 @@ export default function HomeHolywings() {
             <p className="text-yellow-500 text-xs font-semibold tracking-wide">STORE UPDATES</p>
           </div>
           <h2 className="text-3xl md:text-4xl font-display font-bold tracking-wide">News & Articles</h2>
-         
         </div>
+          <Link to="/news" className="text-yellow-500 hover:underline">
+    Lihat semua berita →
+  </Link>
 
         <LatestNewsCarousel />
       </section>

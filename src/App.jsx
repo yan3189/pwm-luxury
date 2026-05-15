@@ -9,6 +9,11 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminProducts from './pages/AdminProducts';
 import AdminNews from './pages/AdminNews';
+import AllNewsPage from './pages/AllNewsPage';
+import NewsDetailPage from './pages/NewsDetailPage';
+import AllEventsPage from './pages/AllEventsPage';
+import EventDetailPage from './pages/EventDetailPage';
+import AdminEvents from './pages/AdminEvents';
 
 function App() {
   return (
@@ -22,6 +27,11 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin/products" element={<AdminProducts />} />
         <Route path="/admin/news" element={<AdminNews />} />
+        <Route path="/news" element={<AllNewsPage />} />
+        <Route path="/events" element={<AllEventsPage />} />
+        <Route path="/admin/events" element={<AdminEvents />} />
+        <Route path="/events/:id" element={<EventDetailPage />} />
+        <Route path="/news/:id" element={<NewsDetailPage />} /> 
       </Routes>
     </BrowserRouter>
   );

@@ -1,14 +1,15 @@
 // ========== FILE: src/pages/AdminDashboard.jsx ==========
-// Dashboard utama: preview 5 produk & 5 news terbaru, dengan tombol ke halaman khusus
+// Dashboard admin dengan preview produk, news, dan event (masing-masing 3 item terbaru)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Package, Newspaper, Edit, ExternalLink } from 'lucide-react'
+import { Package, Newspaper, Calendar, Edit, ExternalLink } from 'lucide-react'
 
 export default function AdminDashboard() {
   const [store, setStore] = useState(null)
   const [recentProducts, setRecentProducts] = useState([])
   const [recentNews, setRecentNews] = useState([])
+  const [recentEvents, setRecentEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -44,23 +45,32 @@ export default function AdminDashboard() {
       .single()
     setStore(storeData)
 
-    // Ambil 5 produk terbaru
+    // Ambil 3 produk terbaru
     const { data: productsData } = await supabase
       .from('products')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: false })
-      .limit(5)
+      .limit(3)
     setRecentProducts(productsData || [])
 
-    // Ambil 5 news terbaru
+    // Ambil 3 news terbaru
     const { data: newsData } = await supabase
       .from('news')
       .select('*')
       .eq('store_id', storeId)
       .order('published_at', { ascending: false })
-      .limit(5)
+      .limit(3)
     setRecentNews(newsData || [])
+
+    // Ambil 3 event terbaru (berdasarkan tanggal terdekat)
+    const { data: eventsData } = await supabase
+      .from('events')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('date', { ascending: true })
+      .limit(3)
+    setRecentEvents(eventsData || [])
 
     setLoading(false)
   }
@@ -75,7 +85,6 @@ export default function AdminDashboard() {
   return (
     <div className="bg-black min-h-screen text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-display">Dashboard Store</h1>
@@ -84,98 +93,80 @@ export default function AdminDashboard() {
           <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
         </div>
 
-        {/* Grid: Preview Produk dan News */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Grid: 3 kolom untuk preview */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* ========== PREVIEW PRODUK ========== */}
+          {/* ========== PREVIEW PRODUK (3 item) ========== */}
           <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Package size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Produk Terbaru</h2>
+                <h2 className="text-xl font-display">Produk</h2>
               </div>
-              <button 
-                onClick={() => navigate('/admin/products')}
-                className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all"
-              >
-                Kelola Semua <ExternalLink size={14} />
-              </button>
+              <button onClick={() => navigate('/admin/products')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">Kelola <ExternalLink size={12} /></button>
             </div>
-            
             {recentProducts.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">Belum ada produk. <button onClick={() => navigate('/admin/products')} className="text-yellow-500">Tambah sekarang</button></p>
+              <p className="text-gray-500 text-center py-6 text-sm">Belum ada produk</p>
             ) : (
               <div className="space-y-2">
                 {recentProducts.map(p => (
                   <div key={p.id} className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
                     <div>
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-yellow-500 text-sm">Rp {p.price.toLocaleString()}</p>
+                      <p className="font-medium text-sm">{p.name}</p>
+                      <p className="text-yellow-500 text-xs">Rp {p.price.toLocaleString()}</p>
                     </div>
-                    <button 
-                      onClick={() => navigate('/admin/products')}
-                      className="text-gray-400 hover:text-yellow-500"
-                    >
-                      <Edit size={16} />
-                    </button>
+                    <button onClick={() => navigate('/admin/products')} className="text-gray-400 hover:text-yellow-500"><Edit size={14} /></button>
                   </div>
                 ))}
-                {recentProducts.length >= 5 && (
-                  <p className="text-center text-gray-500 text-sm mt-2">...dan seterusnya</p>
-                )}
               </div>
             )}
           </div>
 
-          {/* ========== PREVIEW NEWS ========== */}
+          {/* ========== PREVIEW NEWS (3 item) ========== */}
           <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Newspaper size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Artikel Terbaru</h2>
+                <h2 className="text-xl font-display">Artikel</h2>
               </div>
-              <button 
-                onClick={() => navigate('/admin/news')}
-                className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all"
-              >
-                Kelola Semua <ExternalLink size={14} />
-              </button>
+              <button onClick={() => navigate('/admin/news')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">Kelola <ExternalLink size={12} /></button>
             </div>
-            
             {recentNews.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">Belum ada artikel. <button onClick={() => navigate('/admin/news')} className="text-yellow-500">Tambah sekarang</button></p>
+              <p className="text-gray-500 text-center py-6 text-sm">Belum ada artikel</p>
             ) : (
               <div className="space-y-2">
                 {recentNews.map(n => (
-                  <div key={n.id} className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
-                    <div>
-                      <p className="font-medium line-clamp-1">{n.title}</p>
-                      <p className="text-gray-400 text-xs">{new Date(n.published_at).toLocaleDateString('id-ID')}</p>
-                    </div>
-                    <button 
-                      onClick={() => navigate('/admin/news')}
-                      className="text-gray-400 hover:text-yellow-500"
-                    >
-                      <Edit size={16} />
-                    </button>
+                  <div key={n.id} className="p-2 bg-white/5 rounded-lg">
+                    <p className="font-medium text-sm line-clamp-1">{n.title}</p>
+                    <p className="text-gray-400 text-xs">{new Date(n.published_at).toLocaleDateString('id-ID')}</p>
                   </div>
                 ))}
-                {recentNews.length >= 5 && (
-                  <p className="text-center text-gray-500 text-sm mt-2">...dan seterusnya</p>
-                )}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Tombol edit store (opsional, nanti bisa ditambah upload logo) */}
-        <div className="mt-8 text-center">
-          <button 
-            onClick={() => alert('Fitur edit store akan menyusul')}
-            className="border border-white/20 hover:border-yellow-500 px-6 py-2 rounded-full text-sm transition"
-          >
-            Edit Profil Store
-          </button>
+          {/* ========== PREVIEW EVENT (3 item) ========== */}
+          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar size={20} className="text-yellow-500" />
+                <h2 className="text-xl font-display">Event</h2>
+              </div>
+              <button onClick={() => navigate('/admin/events')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">Kelola <ExternalLink size={12} /></button>
+            </div>
+            {recentEvents.length === 0 ? (
+              <p className="text-gray-500 text-center py-6 text-sm">Belum ada event</p>
+            ) : (
+              <div className="space-y-2">
+                {recentEvents.map(e => (
+                  <div key={e.id} className="p-2 bg-white/5 rounded-lg">
+                    <p className="font-medium text-sm line-clamp-1">{e.title}</p>
+                    <p className="text-gray-400 text-xs">{new Date(e.date).toLocaleDateString('id-ID')}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

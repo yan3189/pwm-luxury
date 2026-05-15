@@ -5,6 +5,7 @@ import { Swiper, SwiperSlide } from 'swiper/react'
 import { Pagination } from 'swiper/modules'
 import { Calendar, User, ArrowRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { Link } from 'react-router-dom';
 
 import 'swiper/css'
 import 'swiper/css/pagination'
@@ -127,9 +128,9 @@ function NewsCard({ item }) {
         </p>
 
         {/* Tombol baca selengkapnya (nanti bisa diarahkan ke halaman detail artikel) */}
-        <button className="mt-4 flex items-center gap-1 text-yellow-500 text-sm font-medium hover:gap-2 transition-all">
-          Baca Selengkapnya <ArrowRight size={14} />
-        </button>
+        <Link to={`/news/${item.id}`} className="mt-4 flex items-center gap-1 text-yellow-500 text-sm font-medium hover:gap-2 transition-all">
+  Baca Selengkapnya <ArrowRight size={14} />
+</Link>
       </div>
     </div>
   )
