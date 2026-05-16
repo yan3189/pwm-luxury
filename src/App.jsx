@@ -14,6 +14,11 @@ import NewsDetailPage from './pages/NewsDetailPage';
 import AllEventsPage from './pages/AllEventsPage';
 import EventDetailPage from './pages/EventDetailPage';
 import AdminEvents from './pages/AdminEvents';
+import MemberRegister from './pages/MemberRegister'
+import MemberLogin from './pages/MemberLogin'
+import MemberDashboard from './pages/MemberDashboard'
+import AdminMembers from './pages/AdminMembers'
+import AllStoresPage from './pages/AllStoresPage'
 
 function App() {
   return (
@@ -32,6 +37,11 @@ function App() {
         <Route path="/admin/events" element={<AdminEvents />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route path="/news/:id" element={<NewsDetailPage />} /> 
+        <Route path="/member/register" element={<MemberRegister />} />
+        <Route path="/member/login" element={<MemberLogin />} />
+        <Route path="/member/dashboard" element={<MemberDashboard />} />
+        <Route path="/admin/members" element={<AdminMembers />} />
+        <Route path="/stores" element={<AllStoresPage />} />
       </Routes>
     </BrowserRouter>
   );

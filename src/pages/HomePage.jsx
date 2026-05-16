@@ -8,9 +8,26 @@ import AllNews from '../components/AllNews';
 import LatestNewsCarousel from '../components/LatestNewsCarousel';
 import { ArrowRight, Star, MapPin, ChevronRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export default function HomeHolywings() {
-  // Data dummy untuk store
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+useEffect(() => {
+  const checkUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setIsLoggedIn(!!user);
+  };
+  checkUser();
+
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    setIsLoggedIn(!!session);
+  });
+
+  return () => subscription.unsubscribe();
+}, []);
+
   const featuredStores = [
     { id: 1, name: 'PWM SENAYAN CITY', location: 'Jakarta Selatan', image: 'https://images.unsplash.com/photo-1566417713940-fe9c9f0f9c2c?q=80&w=2070', rating: 4.8, tag: 'POPULAR' },
     { id: 2, name: 'PWM KELAPA GADING', location: 'Jakarta Utara', image: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=2070', rating: 4.7, tag: 'NEW' },
@@ -54,12 +71,16 @@ export default function HomeHolywings() {
           </p>
           
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
-            <button className="group bg-linear-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition duration-300 shadow-lg shadow-yellow-500/20">
-              Daftar Member <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
-            </button>
-            <button className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition duration-300 backdrop-blur-sm">
-              Lihat Store
-            </button>
+
+          {!isLoggedIn && (
+  <Link to="/member/register" className="group bg-gradient-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition duration-300 shadow-lg shadow-yellow-500/20">
+    Daftar Member <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
+  </Link>
+)}
+<Link to="/stores" className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition duration-300 backdrop-blur-sm">
+  Lihat Store
+</Link>
+            
           </div>
         </div>
 
