@@ -19,6 +19,10 @@ import MemberLogin from './pages/MemberLogin'
 import MemberDashboard from './pages/MemberDashboard'
 import AdminMembers from './pages/AdminMembers'
 import AllStoresPage from './pages/AllStoresPage'
+import FloatingContact from './components/FloatingContact';
+import ContactPage from './pages/ContactPage';
+import StoreContactPage from './pages/StoreContactPage';
+import AdminContacts from './pages/AdminContacts';
 
 function App() {
   return (
@@ -42,7 +46,12 @@ function App() {
         <Route path="/member/dashboard" element={<MemberDashboard />} />
         <Route path="/admin/members" element={<AdminMembers />} />
         <Route path="/stores" element={<AllStoresPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/store/:slug/contact" element={<StoreContactPage />} />
+        <Route path="/admin/contacts" element={<AdminContacts />} />
+
       </Routes>
+      <FloatingContact />
     </BrowserRouter>
   );
 }

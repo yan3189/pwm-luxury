@@ -1,9 +1,9 @@
 // ========== FILE: src/pages/AdminDashboard.jsx ==========
-// Dashboard admin dengan preview: produk, news, event, dan member (masing-masing 3 item terbaru)
+// Dashboard admin dengan preview: produk, news, event, member, dan pesan (masing-masing 3 item terbaru)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Package, Newspaper, Calendar, Users, Edit, ExternalLink } from 'lucide-react'
+import { Package, Newspaper, Calendar, Users, MessageCircle, Edit, ExternalLink } from 'lucide-react'
 
 export default function AdminDashboard() {
   const [store, setStore] = useState(null)
@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   const [recentNews, setRecentNews] = useState([])
   const [recentEvents, setRecentEvents] = useState([])
   const [recentMembers, setRecentMembers] = useState([])
+  const [recentMessages, setRecentMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -82,6 +83,15 @@ export default function AdminDashboard() {
       .limit(3)
     setRecentMembers(membersData || [])
 
+    // Ambil 3 pesan terbaru untuk store ini
+    const { data: messagesData } = await supabase
+      .from('contact_messages')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    setRecentMessages(messagesData || [])
+
     setLoading(false)
   }
 
@@ -103,8 +113,8 @@ export default function AdminDashboard() {
           <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
         </div>
 
-        {/* Grid: 4 kolom untuk preview (produk, news, event, member) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Grid: 5 kolom untuk preview (produk, news, event, member, pesan) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           
           {/* ========== 1. PREVIEW PRODUK (3 item) ========== */}
           <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
@@ -204,7 +214,33 @@ export default function AdminDashboard() {
                 {recentMembers.map(m => (
                   <div key={m.id} className="p-2 bg-white/5 rounded-lg">
                     <p className="font-medium text-sm line-clamp-1">{m.full_name || m.email}</p>
-                    <p className="text-gray-400 text-xs">{m.points || 0} poin</p>
+                    <p className="text-yellow-500 text-xs">{m.points || 0} poin</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ========== 5. PREVIEW PESAN (3 item) ========== */}
+          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-2">
+                <MessageCircle size={20} className="text-yellow-500" />
+                <h2 className="text-xl font-display">Pesan</h2>
+              </div>
+              <button onClick={() => navigate('/admin/contacts')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
+                Kelola <ExternalLink size={12} />
+              </button>
+            </div>
+            {recentMessages.length === 0 ? (
+              <p className="text-gray-500 text-center py-6 text-sm">Belum ada pesan</p>
+            ) : (
+              <div className="space-y-2">
+                {recentMessages.map(m => (
+                  <div key={m.id} className="p-2 bg-white/5 rounded-lg">
+                    <p className="font-medium text-sm line-clamp-1">{m.name}</p>
+                    <p className="text-gray-400 text-xs line-clamp-2">{m.message}</p>
+                    <p className="text-gray-500 text-xs mt-1">{new Date(m.created_at).toLocaleDateString('id-ID')}</p>
                   </div>
                 ))}
               </div>

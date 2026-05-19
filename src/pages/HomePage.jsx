@@ -72,14 +72,7 @@ useEffect(() => {
           
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
 
-          {!isLoggedIn && (
-  <Link to="/member/register" className="group bg-gradient-to-r from-yellow-500 to-orange-600 text-black font-bold py-3 px-8 rounded-full flex items-center justify-center gap-2 hover:scale-105 transition duration-300 shadow-lg shadow-yellow-500/20">
-    Daftar Member <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
-  </Link>
-)}
-<Link to="/stores" className="border border-white/40 hover:bg-white/10 py-3 px-8 rounded-full transition duration-300 backdrop-blur-sm">
-  Lihat Store
-</Link>
+        
             
           </div>
         </div>
