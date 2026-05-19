@@ -1,3 +1,0 @@
-Google maps javascript API = AIzaSyDyErRb4B2F2iGSd0z3SeX3WuTC52Tjmvo
-Places New API = AIzaSyDYI4Dli1FvBK8gghtvnugUHmKjjZ78vjs
-Directions API = AIzaSyAwJlAQSf1eHPFI6_9_tX1ZFy20yLamPlM
