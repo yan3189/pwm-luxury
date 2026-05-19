@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { User, LogOut, Gift, Star, Mail, Phone, Edit2, Save, X } from 'lucide-react';
+import AddressPicker from '../components/AddressPicker';
 
 export default function MemberDashboard() {
   const [user, setUser] = useState(null);
@@ -86,7 +87,95 @@ export default function MemberDashboard() {
     }
     setSaving(false);
   };
-  
+    // ========== ALAMAT ==========
+  const [addresses, setAddresses] = useState([])
+  const [showAddressModal, setShowAddressModal] = useState(false)
+  const [editingAddress, setEditingAddress] = useState(null)
+  const [addressForm, setAddressForm] = useState({ label: '', address_text: '', latitude: '', longitude: '' })
+  const [addressLocation, setAddressLocation] = useState({ lat: null, lng: null, address: '' })
+
+  // Ambil daftar alamat member
+  const fetchAddresses = async () => {
+    const { data, error } = await supabase
+      .from('member_addresses')
+      .select('*')
+      .eq('member_id', user.id)
+      .order('is_default', { ascending: false })
+    if (!error) setAddresses(data || [])
+  }
+
+  useEffect(() => {
+    if (user) fetchAddresses()
+  }, [user])
+
+  const openAddAddress = () => {
+    setEditingAddress(null)
+    setAddressForm({ label: '', address_text: '', latitude: '', longitude: '' })
+    setAddressLocation({ lat: null, lng: null, address: '' })
+    setShowAddressModal(true)
+  }
+
+  const openEditAddress = (addr) => {
+    setEditingAddress(addr)
+    setAddressForm({
+      label: addr.label,
+      address_text: addr.address_text,
+      latitude: addr.latitude,
+      longitude: addr.longitude
+    })
+    setAddressLocation({
+      lat: addr.latitude,
+      lng: addr.longitude,
+      address: addr.address_text
+    })
+    setShowAddressModal(true)
+  }
+
+  const saveAddress = async () => {
+    const addressData = {
+      member_id: user.id,
+      label: addressForm.label,
+      address_text: addressLocation.address || addressForm.address_text,
+      latitude: addressLocation.lat || addressForm.latitude,
+      longitude: addressLocation.lng || addressForm.longitude,
+    }
+
+    if (editingAddress) {
+      const { error } = await supabase
+        .from('member_addresses')
+        .update(addressData)
+        .eq('id', editingAddress.id)
+      if (error) alert('Gagal update: ' + error.message)
+    } else {
+      const { error } = await supabase
+        .from('member_addresses')
+        .insert([addressData])
+      if (error) alert('Gagal tambah: ' + error.message)
+    }
+    setShowAddressModal(false)
+    fetchAddresses()
+  }
+
+  const deleteAddress = async (id) => {
+    if (confirm('Hapus alamat ini?')) {
+      const { error } = await supabase
+        .from('member_addresses')
+        .delete()
+        .eq('id', id)
+      if (error) alert('Gagal hapus: ' + error.message)
+      else fetchAddresses()
+    }
+  }
+
+  const setDefaultAddress = async (id) => {
+    const { error } = await supabase
+      .from('member_addresses')
+      .update({ is_default: true })
+      .eq('id', id)
+    if (error) alert('Gagal: ' + error.message)
+    else fetchAddresses()
+  }
+
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
   
   return (
@@ -181,7 +270,72 @@ export default function MemberDashboard() {
           <h2 className="text-xl font-display mb-4">Riwayat Transaksi</h2>
           <p className="text-gray-500 text-center py-8">Belum ada transaksi</p>
         </div>
+
+                {/* ========== ALAMAT PENGIRIMAN ========== */}
+        <div className="bg-gray-900/50 rounded-xl p-6 border border-white/10 mt-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-display">Alamat Pengiriman</h2>
+            <button 
+              onClick={() => setShowAddressModal(true)}
+              className="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm"
+            >
+              + Tambah Alamat
+            </button>
+          </div>
+          
+          {addresses.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">Belum ada alamat. Klik "Tambah Alamat" untuk menambahkan.</p>
+          ) : (
+            <div className="space-y-3">
+              {addresses.map(addr => (
+                <div key={addr.id} className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{addr.label}</span>
+                      {addr.is_default && <span className="text-yellow-500 text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">Utama</span>}
+                    </div>
+                    <p className="text-gray-400 text-sm mt-1">{addr.address_text}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => openEditAddress(addr)} className="text-blue-400 text-sm">Edit</button>
+                    <button onClick={() => deleteAddress(addr.id)} className="text-red-400 text-sm">Hapus</button>
+                    {!addr.is_default && (
+                      <button onClick={() => setDefaultAddress(addr.id)} className="text-yellow-500 text-sm">Jadikan Utama</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+            {/* MODAL TAMBAH/EDIT ALAMAT */}
+      {showAddressModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
+            <h3 className="text-xl font-display mb-4">{editingAddress ? 'Edit Alamat' : 'Tambah Alamat Baru'}</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Label (contoh: Rumah, Kantor)</label>
+                <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={addressForm.label} onChange={e => setAddressForm({...addressForm, label: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Lokasi (cari alamat atau klik peta)</label>
+                <AddressPicker
+                  initialLat={addressLocation.lat || addressForm.latitude}
+                  initialLng={addressLocation.lng || addressForm.longitude}
+                  initialAddress={addressLocation.address || addressForm.address_text}
+                  onAddressChange={(loc) => setAddressLocation(loc)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={saveAddress} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1">Simpan</button>
+              <button onClick={() => setShowAddressModal(false)} className="bg-gray-700 px-4 py-2 rounded-full">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
