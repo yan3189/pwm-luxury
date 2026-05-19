@@ -1,12 +1,13 @@
 // ========== FILE: src/pages/AdminDashboard.jsx ==========
-// Dashboard admin dengan preview produk, news, event, member, pesan
-// PLUS: Modal edit store dengan Google Maps Location Picker
-
+// Dashboard admin dengan preview: produk, news, event, member, pesan, dan pesanan
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Package, Newspaper, Calendar, Users, MessageCircle, Edit, ExternalLink } from 'lucide-react'
-import LocationPicker from '../components/LocationPicker'  // <-- IMPORT KOMPONEN PETA
+import { 
+  Package, Newspaper, Calendar, Users, MessageCircle, 
+  ShoppingBag, Edit, ExternalLink 
+} from 'lucide-react'
+import LocationPicker from '../components/LocationPicker'
 
 export default function AdminDashboard() {
   // ========== STATE ==========
@@ -16,8 +17,9 @@ export default function AdminDashboard() {
   const [recentEvents, setRecentEvents] = useState([])
   const [recentMembers, setRecentMembers] = useState([])
   const [recentMessages, setRecentMessages] = useState([])
+  const [recentOrders, setRecentOrders] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showStoreModal, setShowStoreModal] = useState(false)  // <-- UNTUK MODAL EDIT STORE
+  const [showStoreModal, setShowStoreModal] = useState(false)
   
   // State untuk form edit store
   const [storeForm, setStoreForm] = useState({
@@ -29,8 +31,8 @@ export default function AdminDashboard() {
     video_preview: '',
     category: 'club',
     alamat: '',
-    latitude: '',     // <-- BARU: untuk koordinat dari peta
-    longitude: ''     // <-- BARU: untuk koordinat dari peta
+    latitude: '',
+    longitude: ''
   })
   
   const navigate = useNavigate()
@@ -130,6 +132,15 @@ export default function AdminDashboard() {
       .limit(3)
     setRecentMessages(messagesData || [])
 
+    // Ambil 3 pesanan terbaru
+    const { data: ordersData } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    setRecentOrders(ordersData || [])
+
     setLoading(false)
   }
 
@@ -139,7 +150,7 @@ export default function AdminDashboard() {
     navigate('/admin/login')
   }
 
-  // ========== UPDATE DATA STORE (SIMPAN PERUBAHAN) ==========
+  // ========== UPDATE DATA STORE ==========
   const handleUpdateStore = async () => {
     if (!store) return
     
@@ -201,7 +212,7 @@ export default function AdminDashboard() {
           <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
         </div>
 
-        {/* TOMBOL EDIT STORE (MEMBUKA MODAL) */}
+        {/* TOMBOL EDIT STORE */}
         <div className="mb-6 flex justify-end">
           <button 
             onClick={() => setShowStoreModal(true)}
@@ -211,33 +222,28 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* GRID PREVIEW (5 KOLOM) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* GRID PREVIEW (6 KOLOM) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           
           {/* 1. PRODUK */}
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <Package size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Produk</h2>
+                <Package size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Produk</h2>
               </div>
-              <button onClick={() => navigate('/admin/products')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
-                Kelola <ExternalLink size={12} />
+              <button onClick={() => navigate('/admin/products')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
               </button>
             </div>
             {recentProducts.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 text-sm">Belum ada produk</p>
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada produk</p>
             ) : (
               <div className="space-y-2">
                 {recentProducts.map(p => (
-                  <div key={p.id} className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
-                    <div>
-                      <p className="font-medium text-sm line-clamp-1">{p.name}</p>
-                      <p className="text-yellow-500 text-xs">Rp {p.price.toLocaleString()}</p>
-                    </div>
-                    <button onClick={() => navigate('/admin/products')} className="text-gray-400 hover:text-yellow-500">
-                      <Edit size={14} />
-                    </button>
+                  <div key={p.id} className="flex justify-between items-center p-1 bg-white/5 rounded text-xs">
+                    <span className="truncate">{p.name}</span>
+                    <span className="text-yellow-500">Rp {p.price.toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -245,24 +251,23 @@ export default function AdminDashboard() {
           </div>
 
           {/* 2. ARTIKEL */}
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <Newspaper size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Artikel</h2>
+                <Newspaper size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Artikel</h2>
               </div>
-              <button onClick={() => navigate('/admin/news')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
-                Kelola <ExternalLink size={12} />
+              <button onClick={() => navigate('/admin/news')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
               </button>
             </div>
             {recentNews.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 text-sm">Belum ada artikel</p>
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada artikel</p>
             ) : (
               <div className="space-y-2">
                 {recentNews.map(n => (
-                  <div key={n.id} className="p-2 bg-white/5 rounded-lg">
-                    <p className="font-medium text-sm line-clamp-1">{n.title}</p>
-                    <p className="text-gray-400 text-xs">{new Date(n.published_at).toLocaleDateString('id-ID')}</p>
+                  <div key={n.id} className="p-1 bg-white/5 rounded text-xs">
+                    <p className="truncate">{n.title}</p>
                   </div>
                 ))}
               </div>
@@ -270,24 +275,23 @@ export default function AdminDashboard() {
           </div>
 
           {/* 3. EVENT */}
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <Calendar size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Event</h2>
+                <Calendar size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Event</h2>
               </div>
-              <button onClick={() => navigate('/admin/events')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
-                Kelola <ExternalLink size={12} />
+              <button onClick={() => navigate('/admin/events')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
               </button>
             </div>
             {recentEvents.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 text-sm">Belum ada event</p>
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada event</p>
             ) : (
               <div className="space-y-2">
                 {recentEvents.map(e => (
-                  <div key={e.id} className="p-2 bg-white/5 rounded-lg">
-                    <p className="font-medium text-sm line-clamp-1">{e.title}</p>
-                    <p className="text-gray-400 text-xs">{new Date(e.date).toLocaleDateString('id-ID')}</p>
+                  <div key={e.id} className="p-1 bg-white/5 rounded text-xs">
+                    <p className="truncate">{e.title}</p>
                   </div>
                 ))}
               </div>
@@ -295,24 +299,24 @@ export default function AdminDashboard() {
           </div>
 
           {/* 4. MEMBER */}
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <Users size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Member</h2>
+                <Users size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Member</h2>
               </div>
-              <button onClick={() => navigate('/admin/members')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
-                Kelola <ExternalLink size={12} />
+              <button onClick={() => navigate('/admin/members')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
               </button>
             </div>
             {recentMembers.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 text-sm">Belum ada member</p>
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada member</p>
             ) : (
               <div className="space-y-2">
                 {recentMembers.map(m => (
-                  <div key={m.id} className="p-2 bg-white/5 rounded-lg">
-                    <p className="font-medium text-sm line-clamp-1">{m.full_name || m.email}</p>
-                    <p className="text-yellow-500 text-xs">{m.points || 0} poin</p>
+                  <div key={m.id} className="p-1 bg-white/5 rounded text-xs">
+                    <p className="truncate">{m.full_name || m.email}</p>
+                    <p className="text-yellow-500">{m.points || 0} poin</p>
                   </div>
                 ))}
               </div>
@@ -320,25 +324,50 @@ export default function AdminDashboard() {
           </div>
 
           {/* 5. PESAN */}
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <MessageCircle size={20} className="text-yellow-500" />
-                <h2 className="text-xl font-display">Pesan</h2>
+                <MessageCircle size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Pesan</h2>
               </div>
-              <button onClick={() => navigate('/admin/contacts')} className="text-yellow-500 text-sm flex items-center gap-1 hover:gap-2 transition-all">
-                Kelola <ExternalLink size={12} />
+              <button onClick={() => navigate('/admin/contacts')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
               </button>
             </div>
             {recentMessages.length === 0 ? (
-              <p className="text-gray-500 text-center py-6 text-sm">Belum ada pesan</p>
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada pesan</p>
             ) : (
               <div className="space-y-2">
                 {recentMessages.map(m => (
-                  <div key={m.id} className="p-2 bg-white/5 rounded-lg">
-                    <p className="font-medium text-sm line-clamp-1">{m.name}</p>
-                    <p className="text-gray-400 text-xs line-clamp-2">{m.message}</p>
-                    <p className="text-gray-500 text-xs mt-1">{new Date(m.created_at).toLocaleDateString('id-ID')}</p>
+                  <div key={m.id} className="p-1 bg-white/5 rounded text-xs">
+                    <p className="truncate font-medium">{m.name}</p>
+                    <p className="text-gray-400 truncate">{m.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 6. PESANAN */}
+          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={18} className="text-yellow-500" />
+                <h2 className="text-lg font-display">Pesanan</h2>
+              </div>
+              <button onClick={() => navigate('/admin/orders')} className="text-yellow-500 text-xs flex items-center gap-1 hover:gap-2 transition">
+                Kelola <ExternalLink size={10} />
+              </button>
+            </div>
+            {recentOrders.length === 0 ? (
+              <p className="text-gray-500 text-center py-4 text-xs">Belum ada pesanan</p>
+            ) : (
+              <div className="space-y-2">
+                {recentOrders.map(o => (
+                  <div key={o.id} className="p-1 bg-white/5 rounded text-xs">
+                    <p className="truncate">#{o.order_number}</p>
+                    <p className="text-yellow-500">Rp {o.total_amount.toLocaleString()}</p>
+                    <p className="text-gray-400 capitalize">{o.status}</p>
                   </div>
                 ))}
               </div>
@@ -347,7 +376,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ========== MODAL EDIT STORE (DENGAN GOOGLE MAPS) ========== */}
+      {/* ========== MODAL EDIT STORE ========== */}
       {showStoreModal && store && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
@@ -383,14 +412,14 @@ export default function AdminDashboard() {
                 {storeForm.logo && <img src={storeForm.logo} className="h-16 w-16 object-cover rounded-full mt-2" alt="preview" />}
               </div>
               
-              {/* Background Image (Hero) */}
+              {/* Background Image */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Background Image (Hero halaman store)</label>
                 <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.background_image} onChange={e => setStoreForm({...storeForm, background_image: e.target.value})} />
                 {storeForm.background_image && <img src={storeForm.background_image} className="h-20 w-full object-cover rounded mt-2" alt="preview" />}
               </div>
               
-              {/* Cover Image (Card Carousel) */}
+              {/* Cover Image */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Cover Image (Card carousel homepage)</label>
                 <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.cover_image} onChange={e => setStoreForm({...storeForm, cover_image: e.target.value})} />
@@ -411,7 +440,7 @@ export default function AdminDashboard() {
                 <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.alamat} onChange={e => setStoreForm({...storeForm, alamat: e.target.value})} />
               </div>
               
-              {/* ========== GOOGLE MAPS LOCATION PICKER ========== */}
+              {/* Google Maps Location Picker */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Lokasi Store (Peta)</label>
                 <LocationPicker
@@ -426,7 +455,7 @@ export default function AdminDashboard() {
                     })
                   }}
                 />
-                <p className="text-gray-500 text-xs mt-1">Klik peta atau cari alamat untuk menentukan titik lokasi store. Ini penting untuk perhitungan jarak pengiriman.</p>
+                <p className="text-gray-500 text-xs mt-1">Klik peta atau cari alamat untuk menentukan titik lokasi store.</p>
               </div>
             </div>
             

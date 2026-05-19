@@ -23,6 +23,12 @@ import FloatingContact from './components/FloatingContact';
 import ContactPage from './pages/ContactPage';
 import StoreContactPage from './pages/StoreContactPage';
 import AdminContacts from './pages/AdminContacts';
+import CartPage from './pages/CartPage';
+import CheckoutPage from './pages/CheckoutPage';
+import MemberOrders from './pages/MemberOrders'
+import MemberOrderDetail from './pages/MemberOrderDetail'
+import AdminOrders from './pages/AdminOrders'
+import AdminOrderDetail from './pages/AdminOrderDetail'
 
 function App() {
   return (
@@ -49,7 +55,12 @@ function App() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/store/:slug/contact" element={<StoreContactPage />} />
         <Route path="/admin/contacts" element={<AdminContacts />} />
-
+        <Route path="/cart" element={<CartPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/member/orders" element={<MemberOrders />} />
+        <Route path="/member/orders/:id" element={<MemberOrderDetail />} />
+        <Route path="/admin/orders" element={<AdminOrders />} />
+        <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

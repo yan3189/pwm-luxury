@@ -137,6 +137,9 @@ export default function Navbar() {
               <span className="relative z-10">Admin</span>
               <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
             </Link>
+            <Link to="/cart" className="flex items-center gap-1 hover:text-yellow-400 transition">
+  🛒 Cart
+</Link>
             {/* Install App button - paling bawah */}
             {showInstallBtn && (
               <button
@@ -179,6 +182,9 @@ export default function Navbar() {
             >
               Admin
             </Link>
+            <Link to="/cart" className="flex items-center gap-1 hover:text-yellow-400 transition">
+  🛒 Cart
+</Link>
             {showInstallBtn && (
               <button
                 onClick={() => { handleInstallClick(); setIsOpen(false); }}
@@ -187,6 +193,7 @@ export default function Navbar() {
                 <Download size={16} /> Install App
               </button>
             )}
+            
           </div>
         </div>
       )}

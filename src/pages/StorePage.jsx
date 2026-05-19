@@ -58,6 +58,35 @@ export default function StorePage() {
     setLoading(false)
   }
 
+  // ========== FUNGSI TAMBAH KE KERANJANG ==========
+  const addToCart = (product) => {
+    // Ambil cart yang sudah ada dari localStorage
+    const savedCart = localStorage.getItem('cart')
+    let cart = savedCart ? JSON.parse(savedCart) : []
+    
+    // Cek apakah produk sudah ada di cart (menggunakan product.id)
+    const existingIndex = cart.findIndex(item => item.id === product.id)
+    
+    if (existingIndex !== -1) {
+      // Jika sudah ada, tambah quantity
+      cart[existingIndex].quantity += 1
+    } else {
+      // Jika belum ada, tambah produk baru
+      cart.push({ 
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image_url: product.image_url,
+        store_id: product.store_id,
+        quantity: 1 
+      })
+    }
+    
+    // Simpan kembali ke localStorage
+    localStorage.setItem('cart', JSON.stringify(cart))
+    alert(`✅ "${product.name}" ditambahkan ke keranjang`)
+  }
+
   if (loading) {
     return (
       <div className="bg-black min-h-screen text-white flex items-center justify-center">
@@ -151,6 +180,14 @@ export default function StorePage() {
                     <p className="font-bold text-sm md:text-base">{p.name}</p>
                     <p className="text-yellow-500 text-sm md:text-base font-semibold">Rp {p.price.toLocaleString()}</p>
                     {p.description && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.description}</p>}
+                    
+                    {/* ========== TOMBOL TAMBAH KE KERANJANG ========== */}
+                    <button
+                      onClick={() => addToCart(p)}
+                      className="mt-3 w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-1.5 rounded-full transition text-sm"
+                    >
+                      🛒 Tambah ke Keranjang
+                    </button>
                   </div>
                 ))}
               </div>
