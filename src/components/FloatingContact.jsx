@@ -1,5 +1,7 @@
 // ========== FILE: src/components/FloatingContact.jsx ==========
-// Floating button contact us - dinamis berdasarkan konteks store (dari event, news, atau store)
+// Floating button contact us - dinamis berdasarkan konteks store
+// TIDAK muncul di halaman admin (path /admin)
+// TETAP muncul di halaman store (bersama floating cart)
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
@@ -10,9 +12,21 @@ export default function FloatingContact() {
   const [contactLink, setContactLink] = useState('/contact');
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [shouldHide, setShouldHide] = useState(false);
+
+  useEffect(() => {
+    // Sembunyikan floating contact di halaman admin SAJA
+    // (tetap muncul di halaman store, karena floating cart sudah diatur posisinya)
+    const isAdminPage = location.pathname.startsWith('/admin');
+    setShouldHide(isAdminPage);
+  }, [location.pathname]);
 
   useEffect(() => {
     const path = location.pathname;
+    
+    // Jika di halaman admin, tidak perlu hitung link (karena tidak ditampilkan)
+    if (path.startsWith('/admin')) return;
+    
     setLoading(true);
 
     // 1. Jika di halaman store: /store/:slug
@@ -79,8 +93,11 @@ export default function FloatingContact() {
     return data.stores?.slug || null;
   };
 
+  // Jika di halaman admin, tidak tampil
+  if (shouldHide) return null;
+
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-20 right-6 z-50">
       <Link
         to={contactLink}
         onMouseEnter={() => setIsExpanded(true)}
