@@ -31,6 +31,7 @@ import AdminOrders from './pages/AdminOrders'
 import AdminOrderDetail from './pages/AdminOrderDetail'
 import OrderSuccessPage from './pages/OrderSuccessPage'
 import AdminShippingSettings from './pages/AdminShippingSettings'
+import TrackOrderPage from './pages/TrackOrderPage'
 
 function App() {
   return (
@@ -65,6 +66,7 @@ function App() {
         <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
       <Route path="/order-success" element={<OrderSuccessPage />} />
       <Route path="/admin/shipping" element={<AdminShippingSettings />} />
+      <Route path="/track-order/:id" element={<TrackOrderPage />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

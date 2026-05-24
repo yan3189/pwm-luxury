@@ -159,7 +159,17 @@ export default function CheckoutPage() {
       };
 
       const order = await createOrder(orderData, cart.items);
-      navigate('/order-success', { state: { order } });
+      console.log('Order ID yang akan dikirim:', order.id);  // <-- TAMBAHKAN INI
+      // ========== redirect upload bukti tf ==========
+    // Redirect berdasarkan status login user
+    if (user) {
+      // Member: redirect ke halaman detail order (bisa upload bukti)
+      navigate(`/member/orders/${order.id}`);
+    } else {
+      // Non-member: redirect ke halaman track order
+      navigate(`/track-order/${order.id}`);
+    }
+    // ======================================
     } catch (err) {
       alert(err.message);
     }

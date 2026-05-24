@@ -55,9 +55,11 @@ export async function createOrder(orderData, items) {
     order_id: order.id,
     product_id: item.product_id,
     product_name: item.name,
+    price: item.discounted_price,
+    total: item.discounted_price * item.quantity, 
     original_price: item.original_price,
     discounted_price: item.discounted_price,
-    discount_percentage: item.discount_percentage,
+    discount_percentage: item.discount_percentage || 0,
     quantity: item.quantity,
     subtotal: item.discounted_price * item.quantity
   }))
