@@ -1,5 +1,4 @@
 // ========== FILE: src/pages/MemberOrderDetail.jsx ==========
-// Detail pesanan member + upload bukti transfer
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -11,55 +10,71 @@ export default function MemberOrderDetail() {
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
   const [address, setAddress] = useState(null);
+  const [store, setStore] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [store, setStore] = useState(null);
 
   useEffect(() => {
-    fetchOrder();
+    if (id) {
+      fetchOrder();
+    }
   }, [id]);
 
   const fetchOrder = async () => {
     setLoading(true);
     
-    // Ambil order lengkap dengan store info
+    // Step 1: Ambil order berdasarkan ID
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
-      .select(`
-        *,
-        stores ( 
-          id, name, slug, 
-          bank_name, bank_account_number, bank_account_name,
-          phone, email, alamat
-        )
-      `)
+      .select('*')
       .eq('id', id)
-      .single();
-
-    if (orderError) {
-      console.error(orderError);
+      .maybeSingle();
+    
+    if (orderError || !orderData) {
+      console.error('Order error:', orderError);
       setLoading(false);
       return;
     }
+    
     setOrder(orderData);
-    setStore(orderData.stores);
-
-    // Ambil item pesanan
-    const { data: itemsData } = await supabase
+    
+    // Step 2: Ambil store berdasarkan store_id
+    if (orderData.store_id) {
+      const { data: storeData, error: storeError } = await supabase
+        .from('stores')
+        .select('id, name, slug, bank_name, bank_account_number, bank_account_name, phone, email, alamat')
+        .eq('id', orderData.store_id)
+        .single();
+      
+      if (!storeError && storeData) {
+        setStore(storeData);
+      }
+    }
+    
+    // Step 3: Ambil items
+    const { data: itemsData, error: itemsError } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', id);
+    
+    if (itemsError) {
+      console.error('Items error:', itemsError);
+    }
     setItems(itemsData || []);
-
-    // Ambil alamat dari member_addresses jika ada address_id
+    
+    // Step 4: Ambil alamat dari member_addresses (jika ada address_id)
     if (orderData.address_id) {
-      const { data: addressData } = await supabase
+      const { data: addressData, error: addressError } = await supabase
         .from('member_addresses')
         .select('*')
         .eq('id', orderData.address_id)
         .single();
-      setAddress(addressData);
+      
+      if (!addressError && addressData) {
+        setAddress(addressData);
+      }
     }
+    
     setLoading(false);
   };
 
@@ -76,7 +91,6 @@ export default function MemberOrderDetail() {
     const fileExt = file.name.split('.').pop();
     const fileName = `${order.order_number}_${Date.now()}.${fileExt}`;
 
-    // Upload ke Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from('payment-proofs')
       .upload(fileName, file);
@@ -87,17 +101,15 @@ export default function MemberOrderDetail() {
       return;
     }
 
-    // Dapatkan public URL
     const { data: publicUrlData } = supabase.storage
       .from('payment-proofs')
       .getPublicUrl(fileName);
 
-    // Update order dengan URL bukti
     const { error: updateError } = await supabase
       .from('orders')
       .update({ 
         payment_proof_url: publicUrlData.publicUrl,
-        status: 'paid'  // Otomatis jadi paid setelah upload bukti
+        status: 'paid'
       })
       .eq('id', id);
 
@@ -105,7 +117,7 @@ export default function MemberOrderDetail() {
       alert('Gagal menyimpan bukti: ' + updateError.message);
     } else {
       alert('Bukti transfer berhasil diupload! Admin akan segera memverifikasi.');
-      fetchOrder(); // Refresh data
+      fetchOrder();
     }
     setUploading(false);
   };
@@ -131,7 +143,7 @@ export default function MemberOrderDetail() {
   };
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
-  if (!order) return <div className="bg-black min-h-screen text-white p-8">Pesanan tidak ditemukan</div>;
+  if (!order) return <div className="bg-black min-h-screen text-white p-8 text-center">Pesanan tidak ditemukan</div>;
 
   const canUpload = order.status === 'pending' && !order.payment_proof_url;
 
@@ -159,7 +171,7 @@ export default function MemberOrderDetail() {
                 {items.map(item => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <span>{item.product_name} x{item.quantity}</span>
-                    <span>Rp {item.total.toLocaleString()}</span>
+                    <span>Rp {item.total?.toLocaleString() || item.subtotal?.toLocaleString() || 0}</span>
                   </div>
                 ))}
                 <div className="border-t border-white/10 pt-2 mt-2 font-bold flex justify-between">
@@ -228,10 +240,6 @@ export default function MemberOrderDetail() {
                   <Download size={14} /> Lihat bukti transfer
                 </a>
               </div>
-            )}
-
-            {order.status === 'paid' && !order.payment_proof_url && (
-              <p className="text-blue-500 text-sm mt-2 flex items-center gap-1"><AlertCircle size={14} /> Menunggu konfirmasi admin</p>
             )}
           </div>
         </div>
