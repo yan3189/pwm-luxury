@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink 
+  ShoppingBag, Edit, ExternalLink, Truck 
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 
@@ -213,14 +213,22 @@ export default function AdminDashboard() {
         </div>
 
         {/* TOMBOL EDIT STORE */}
-        <div className="mb-6 flex justify-end">
-          <button 
-            onClick={() => setShowStoreModal(true)}
-            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm transition"
-          >
-            <Edit size={16} /> Edit Profil Store
-          </button>
-        </div>
+        
+
+<div className="mb-6 flex justify-end gap-3">
+  <button 
+    onClick={() => setShowStoreModal(true)}
+    className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm transition"
+  >
+    <Edit size={16} /> Edit Profil Store
+  </button>
+  <button 
+    onClick={() => navigate('/admin/shipping')}
+    className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm transition"
+  >
+    <Truck size={16} /> Pengaturan Ongkir
+  </button>
+</div>
 
         {/* GRID PREVIEW (6 KOLOM) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
