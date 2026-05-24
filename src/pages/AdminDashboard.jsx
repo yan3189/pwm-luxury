@@ -228,7 +228,15 @@ export default function AdminDashboard() {
   >
     <Truck size={16} /> Pengaturan Ongkir
   </button>
+
+<button 
+  onClick={() => navigate('/admin/store-categories')}
+  className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm transition"
+>
+  <Package size={16} /> Atur Kategori Store
+</button>
 </div>
+
 
         {/* GRID PREVIEW (6 KOLOM) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
