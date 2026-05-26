@@ -38,13 +38,12 @@ export default function AdminLogin() {
       return
     }
     
-    // Izinkan store_admin DAN super_admin untuk mengakses dashboard
+    // Izinkan store_admin DAN super_admin untuk mengakses dashboard dan courirer untuk dashboard kurir
     if (userData?.role === 'store_admin' || userData?.role === 'super_admin') {
-      navigate('/admin/dashboard')
-    } else {
-      setError(`Akun ini bukan admin store atau super admin. Role yang terdeteksi: ${userData?.role || 'tidak ada'}`)
-      await supabase.auth.signOut()
-    }
+  navigate('/admin/dashboard');
+} else if (userData?.role === 'courier') {
+  navigate('/courier/dashboard');
+}
     setLoading(false)
   }
 

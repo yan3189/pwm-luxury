@@ -13,6 +13,61 @@ export default function AdminOrderDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
+  const [couriers, setCouriers] = useState([]);
+const [selectedCourierId, setSelectedCourierId] = useState('');
+const [deliveryAssignment, setDeliveryAssignment] = useState(null);
+const [assigning, setAssigning] = useState(false);
+
+const fetchCouriers = async () => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, phone')
+    .eq('role', 'courier');
+  
+  if (!error) setCouriers(data || []);
+};
+
+const assignCourier = async () => {
+  if (!selectedCourierId) {
+    alert('Pilih kurir terlebih dahulu');
+    return;
+  }
+  
+  setAssigning(true);
+  
+  // Update order dengan delivery_type = 'internal'
+  await supabase
+    .from('orders')
+    .update({ delivery_type: 'internal', courier_id: selectedCourierId })
+    .eq('id', id);
+  
+  // Buat delivery assignment
+  const { error } = await supabase
+    .from('delivery_assignments')
+    .insert({
+      order_id: id,
+      courier_id: selectedCourierId,
+      status: 'assigned'
+    });
+  
+  if (error) {
+    alert('Gagal assign kurir: ' + error.message);
+  } else {
+    alert('Kurir berhasil ditugaskan');
+    fetchOrder(); // Refresh data
+  }
+  setAssigning(false);
+};
+
+const fetchDeliveryAssignment = async (orderId) => {
+  const { data, error } = await supabase
+    .from('delivery_assignments')
+    .select('*, courier:users(id, email, full_name)')
+    .eq('order_id', orderId)
+    .maybeSingle();
+  
+  if (!error && data) setDeliveryAssignment(data);
+};
 
   useEffect(() => {
     if (id) {
@@ -37,7 +92,9 @@ export default function AdminOrderDetail() {
       setLoading(false);
       return;
     }
-    
+    // Setelah ambil order data
+await fetchCouriers();
+await fetchDeliveryAssignment(id);
     setOrder(orderData);
     
     // Step 2: Ambil store
@@ -250,6 +307,43 @@ export default function AdminOrderDetail() {
                   </div>
                 </div>
               )}
+
+{/* Assign Kurir */}
+<div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
+  <h3 className="font-semibold mb-2 flex items-center gap-2">
+    <Truck size={16} /> Assign Kurir Internal
+  </h3>
+  
+  {deliveryAssignment ? (
+    <div>
+      <p className="text-sm">Kurir: {deliveryAssignment.courier?.full_name || deliveryAssignment.courier?.email}</p>
+      <p className="text-sm text-gray-400">Status: {deliveryAssignment.status}</p>
+      {deliveryAssignment.status === 'completed' && (
+        <p className="text-xs text-green-400">Selesai: {new Date(deliveryAssignment.completed_at).toLocaleString()}</p>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-2">
+      <select
+        value={selectedCourierId}
+        onChange={(e) => setSelectedCourierId(e.target.value)}
+        className="w-full p-2 rounded bg-black/50 border border-white/20 text-sm"
+      >
+        <option value="">-- Pilih Kurir --</option>
+        {couriers.map(c => (
+          <option key={c.id} value={c.id}>{c.full_name || c.email} {c.phone && `- ${c.phone}`}</option>
+        ))}
+      </select>
+      <button
+        onClick={assignCourier}
+        disabled={assigning}
+        className="w-full bg-yellow-500 text-black py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+      >
+        {assigning ? 'Memproses...' : 'Assign Kurir'}
+      </button>
+    </div>
+  )}
+</div>
 
               {/* WhatsApp ke Kasir */}
               {store?.phone && (

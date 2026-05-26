@@ -73,3 +73,89 @@ export async function getStoreCoordinates(storeId) {
   if (error) throw error
   return { lat: data.latitude, lng: data.longitude }
 }
+
+// ========== TAMBAHKAN DI AKHIR FILE shippingService.js ==========
+
+/**
+ * Hitung jarak menggunakan Google Maps API dengan caching
+ * (via API route Vercel)
+ */
+export async function calculateDistanceWithCache(storeId, addressId) {
+  try {
+    const response = await fetch('/api/shipping/calculate-distance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId, addressId })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'API call failed');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Distance calculation error:', error);
+    return null;
+  }
+}
+
+/**
+ * Dapatkan ongkir dengan prioritas: cache → Google Maps → Haversine (fallback)
+ */
+export async function getShippingCostWithCache(storeId, addressId) {
+  // 1. Coba pakai Google Maps API + cache
+  const result = await calculateDistanceWithCache(storeId, addressId);
+  
+  if (result && result.success) {
+    return {
+      cost: result.shippingCost,
+      distanceKm: result.distanceKm,
+      durationMinutes: result.durationMinutes,
+      cached: result.cached,
+      source: 'google_maps'
+    };
+  }
+  
+  // 2. Fallback ke Haversine calculation (yang sudah ada)
+  console.log('Falling back to Haversine calculation');
+  try {
+    const storeCoords = await getStoreCoordinates(storeId);
+    const addressCoords = await getAddressCoordinates(addressId);
+    
+    if (storeCoords && addressCoords) {
+      const distance = haversineDistance(
+        storeCoords.lat, storeCoords.lng,
+        addressCoords.lat, addressCoords.lng
+      );
+      const settings = await getStoreShippingSettings(storeId);
+      const cost = calculateShippingCost(distance, settings);
+      
+      return {
+        cost: cost,
+        distanceKm: distance,
+        durationMinutes: Math.round(distance * 2), // estimasi kasar
+        cached: false,
+        source: 'haversine'
+      };
+    }
+  } catch (err) {
+    console.error('Haversine fallback failed:', err);
+  }
+  
+  return null;
+}
+
+/**
+ * Ambil koordinat alamat member (untuk fallback)
+ */
+async function getAddressCoordinates(addressId) {
+  const { data, error } = await supabase
+    .from('member_addresses')
+    .select('latitude, longitude')
+    .eq('id', addressId)
+    .single();
+  
+  if (error || !data) return null;
+  return { lat: data.latitude, lng: data.longitude };
+}

@@ -1,3 +1,5 @@
+// ========== FILE: src/pages/AdminOrders.jsx ==========
+// Admin: daftar pesanan untuk store yang login
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate, Link } from 'react-router-dom';
@@ -40,17 +42,21 @@ export default function AdminOrders() {
   };
 
   const fetchOrders = async (storeId) => {
+    setLoading(true);
+    
+    // Query sederhana tanpa nested select
     const { data, error } = await supabase
       .from('orders')
-      .select(`
-        *,
-        member:users ( email, full_name )
-      `)
+      .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: false });
-
-    if (error) console.error(error);
-    else setOrders(data || []);
+    
+    if (error) {
+      console.error('Error fetching orders:', error);
+    } else {
+      console.log('Orders found:', data?.length);
+      setOrders(data || []);
+    }
     setLoading(false);
   };
 
@@ -61,8 +67,12 @@ export default function AdminOrders() {
       .update({ status: newStatus, updated_at: new Date() })
       .eq('id', orderId);
     
-    if (error) alert('Gagal update: ' + error.message);
-    else fetchOrders(store.id);
+    if (error) {
+      alert('Gagal update: ' + error.message);
+    } else {
+      alert(`Status berhasil diubah menjadi ${newStatus}`);
+      fetchOrders(store.id);
+    }
     setUpdating(false);
   };
 
@@ -75,7 +85,15 @@ export default function AdminOrders() {
       delivered: 'bg-green-500/20 text-green-400',
       cancelled: 'bg-red-500/20 text-red-400'
     };
-    return <span className={`text-xs px-2 py-1 rounded-full ${colors[status] || colors.pending}`}>{status}</span>;
+    const labels = {
+      pending: 'Menunggu Pembayaran',
+      paid: 'Dibayar',
+      processing: 'Diproses',
+      shipping: 'Dikirim',
+      delivered: 'Selesai',
+      cancelled: 'Dibatalkan'
+    };
+    return <span className={`text-xs px-2 py-1 rounded-full ${colors[status] || colors.pending}`}>{labels[status] || status}</span>;
   };
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
@@ -87,6 +105,7 @@ export default function AdminOrders() {
           <div>
             <h1 className="text-2xl font-display">Manajemen Pesanan</h1>
             {store && <p className="text-gray-400 text-sm">{store.name}</p>}
+            <p className="text-gray-500 text-xs mt-1">Total pesanan: {orders.length}</p>
           </div>
           <button onClick={() => navigate('/admin/dashboard')} className="bg-gray-700 px-4 py-2 rounded-full text-sm">Kembali</button>
         </div>
@@ -95,6 +114,7 @@ export default function AdminOrders() {
           <div className="bg-gray-900/50 rounded-xl p-8 text-center">
             <Package size={48} className="mx-auto text-gray-500 mb-3" />
             <p className="text-gray-400">Belum ada pesanan</p>
+            <p className="text-xs text-gray-500 mt-2">Pesanan akan muncul setelah member melakukan checkout</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -102,7 +122,7 @@ export default function AdminOrders() {
               <thead className="bg-gray-800/50 border-b border-white/10">
                 <tr>
                   <th className="p-3">Order ID</th>
-                  <th className="p-3">Member</th>
+                  <th className="p-3">Pemesan</th>
                   <th className="p-3">Total</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Tanggal</th>
@@ -114,8 +134,8 @@ export default function AdminOrders() {
                   <tr key={order.id} className="border-b border-white/5 hover:bg-white/5">
                     <td className="p-3 font-mono text-sm">#{order.order_number}</td>
                     <td className="p-3">
-                      <p>{order.member?.full_name || '-'}</p>
-                      <p className="text-xs text-gray-400">{order.member?.email}</p>
+                      {order.guest_name || order.member_id || 'Guest'}
+                      {order.guest_phone && <p className="text-xs text-gray-400">{order.guest_phone}</p>}
                     </td>
                     <td className="p-3">Rp {order.total_amount.toLocaleString()}</td>
                     <td className="p-3">{getStatusBadge(order.status)}</td>

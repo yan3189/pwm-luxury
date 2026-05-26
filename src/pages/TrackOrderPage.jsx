@@ -1,9 +1,58 @@
 // ========== FILE: src/pages/TrackOrderPage.jsx ==========
-import { useEffect, useState } from 'react';
+// Halaman untuk non-member melacak pesanan
+// Fitur: Detail Pesanan (tab) + Peta Tracking (tab)
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
-import { Package, MapPin, Calendar, CheckCircle, AlertCircle, Truck, Download, ArrowLeft, Upload, MessageCircle } from 'lucide-react';
+import { 
+  Package, MapPin, Calendar, CheckCircle, AlertCircle, 
+  Truck, Download, ArrowLeft, Upload, MessageCircle, 
+  Globe, Map 
+} from 'lucide-react';
+
+// ========== IMPORTS UNTUK LEAFLET ==========
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix untuk marker icon Leaflet di Vite
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({ 
+  iconUrl: icon, 
+  shadowUrl: iconShadow, 
+  iconSize: [25, 41], 
+  iconAnchor: [12, 41] 
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Icon untuk store (kuning)
+const storeIcon = L.icon({
+  iconUrl: icon,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  className: 'leaflet-marker-store'
+});
+
+// Icon untuk destination (hijau)
+const destIcon = L.icon({
+  iconUrl: icon,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  className: 'leaflet-marker-dest'
+});
+
+// Icon untuk courier (biru - menggunakan icon yang sama tapi bisa di-css)
+const courierIcon = L.icon({
+  iconUrl: icon,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  className: 'leaflet-marker-courier'
+});
 
 export default function TrackOrderPage() {
   const { id } = useParams();
@@ -13,6 +62,16 @@ export default function TrackOrderPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState('detail'); // 'detail' atau 'map'
+  
+  // ========== STATE UNTUK TRACKING ==========
+  const [delivery, setDelivery] = useState(null);
+  const [courierLocation, setCourierLocation] = useState(null);
+  const [courier, setCourier] = useState(null);
+  const [isTrackingActive, setIsTrackingActive] = useState(false);
+  const markerRef = useRef(null);
+  const animationRef = useRef(null);
+  const mapRef = useRef(null);
 
   useEffect(() => {
     if (id) {
@@ -23,6 +82,7 @@ export default function TrackOrderPage() {
     }
   }, [id]);
 
+  // ========== FETCH ORDER DATA ==========
   const fetchOrder = async () => {
     setLoading(true);
     setError(null);
@@ -43,33 +103,111 @@ export default function TrackOrderPage() {
     
     setOrder(orderData);
     
-    // Step 2: Ambil info store
+    // Step 2: Ambil store
     if (orderData.store_id) {
-      const { data: storeData, error: storeError } = await supabase
+      const { data: storeData } = await supabase
         .from('stores')
-        .select('id, name, slug, bank_name, bank_account_number, bank_account_name, phone, alamat')
+        .select('id, name, slug, bank_name, bank_account_number, bank_account_name, phone, email, alamat, latitude, longitude')
         .eq('id', orderData.store_id)
         .single();
-      
-      if (!storeError && storeData) {
-        setStore(storeData);
-      }
+      if (storeData) setStore(storeData);
     }
     
     // Step 3: Ambil items
-    const { data: itemsData, error: itemsError } = await supabase
+    const { data: itemsData } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', id);
-    
-    if (itemsError) {
-      console.error('Items error:', itemsError);
-    }
     setItems(itemsData || []);
+    
+    // Step 4: Ambil delivery assignment
+    if (orderData.delivery_type === 'internal') {
+      const { data: deliveryData } = await supabase
+        .from('delivery_assignments')
+        .select('*, courier:users(id, email, full_name)')
+        .eq('order_id', id)
+        .maybeSingle();
+      
+      if (deliveryData) {
+        setDelivery(deliveryData);
+        if (deliveryData.courier) setCourier(deliveryData.courier);
+        
+        // Ambil tracking points terbaru
+        const { data: points } = await supabase
+          .from('tracking_points')
+          .select('*')
+          .eq('delivery_id', deliveryData.id)
+          .order('recorded_at', { ascending: false })
+          .limit(1);
+        
+        if (points && points[0]) {
+          setCourierLocation([points[0].latitude, points[0].longitude]);
+        }
+      }
+    }
     
     setLoading(false);
   };
 
+  // ========== SETUP REALTIME SUBSCRIPTION ==========
+  useEffect(() => {
+    if (!delivery || !delivery.id) return;
+    
+    // Subscribe ke broadcast location updates
+    const channel = supabase
+      .channel(`tracking:${delivery.id}`)
+      .on('broadcast', { event: 'location-update' }, (payload) => {
+        const { lat, lng, heading, timestamp } = payload.payload;
+        
+        // Animasi smooth movement
+        if (markerRef.current && courierLocation) {
+          const startLat = courierLocation[0];
+          const startLng = courierLocation[1];
+          const endLat = lat;
+          const endLng = lng;
+          const startTime = Date.now();
+          const duration = 3000; // 3 detik animasi
+          
+          if (animationRef.current) cancelAnimationFrame(animationRef.current);
+          
+          function animate() {
+            const elapsed = Date.now() - startTime;
+            const t = Math.min(1, elapsed / duration);
+            
+            const newLat = startLat + (endLat - startLat) * t;
+            const newLng = startLng + (endLng - startLng) * t;
+            
+            setCourierLocation([newLat, newLng]);
+            
+            if (t < 1) {
+              animationRef.current = requestAnimationFrame(animate);
+            } else {
+              animationRef.current = null;
+            }
+          }
+          
+          animate();
+        } else {
+          setCourierLocation([lat, lng]);
+        }
+        
+        // Update map center jika diperlukan
+        if (mapRef.current && lat && lng) {
+          mapRef.current.setView([lat, lng], 14);
+        }
+      })
+      .subscribe();
+    
+    setIsTrackingActive(true);
+    
+    return () => {
+      supabase.removeChannel(channel);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      setIsTrackingActive(false);
+    };
+  }, [delivery, courierLocation]);
+
+  // ========== FUNGSI UPLOAD BUKTI ==========
   const handleUploadProof = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -85,13 +223,9 @@ export default function TrackOrderPage() {
 
     const { error: uploadError } = await supabase.storage
       .from('payment-proofs')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
+      .upload(fileName, file);
 
     if (uploadError) {
-      console.error('Upload error:', uploadError);
       alert('Gagal upload: ' + uploadError.message);
       setUploading(false);
       return;
@@ -118,6 +252,7 @@ export default function TrackOrderPage() {
     setUploading(false);
   };
 
+  // ========== FUNGSI GET STATUS BADGE ==========
   const getStatusBadge = (status) => {
     const colors = {
       pending: 'bg-yellow-500/20 text-yellow-500',
@@ -138,6 +273,16 @@ export default function TrackOrderPage() {
     return <span className={`text-xs px-2 py-1 rounded-full ${colors[status] || colors.pending}`}>{labels[status] || status}</span>;
   };
 
+  // ========== RENDER KOORDINAT UNTUK PETA ==========
+  const storeLocation = store?.latitude && store?.longitude 
+    ? [store.latitude, store.longitude] 
+    : null;
+  const destination = order?.shipping_latitude && order?.shipping_longitude 
+    ? [order.shipping_latitude, order.shipping_longitude] 
+    : null;
+  const hasValidCoordinates = (storeLocation || destination) && courierLocation;
+
+  // ========== COPY LINK ==========
   const copyToClipboard = () => {
     navigator.clipboard.writeText(window.location.href);
     alert('Link pesanan disalin!');
@@ -161,16 +306,18 @@ export default function TrackOrderPage() {
   if (!order) return null;
 
   const canUpload = order.status === 'pending' && !order.payment_proof_url;
+  const canTrack = delivery && (delivery.status === 'on_delivery' || delivery.status === 'picking_up');
 
   return (
     <div className="bg-black text-white min-h-screen">
       <Navbar />
-      <div className="max-w-3xl mx-auto px-4 py-24">
+      <div className="max-w-6xl mx-auto px-4 py-24">
         <Link to="/" className="inline-flex items-center gap-1 text-yellow-500 mb-6 hover:gap-2 transition">
           <ArrowLeft size={16} /> Kembali ke Beranda
         </Link>
 
         <div className="bg-gray-900/50 rounded-xl p-6 border border-white/10">
+          {/* Header */}
           <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
             <div>
               <h1 className="text-2xl font-display">Pesanan #{order.order_number}</h1>
@@ -180,83 +327,230 @@ export default function TrackOrderPage() {
             {getStatusBadge(order.status)}
           </div>
 
-          {/* Info Pemesan */}
-          <div className="bg-gray-800/50 rounded-lg p-3 mb-4">
-            <h2 className="font-semibold text-sm mb-2">Informasi Pemesan</h2>
-            <p className="text-sm">{order.guest_name || 'Guest'}</p>
-            <p className="text-sm text-gray-400">{order.guest_phone}</p>
-            <p className="text-sm text-gray-400 mt-1">{order.shipping_address}</p>
-          </div>
-
-          {/* Produk */}
-          <div className="bg-gray-800/50 rounded-lg p-3 mb-4">
-            <h2 className="font-semibold text-sm mb-2">Produk Dipesan</h2>
-            <div className="space-y-1">
-              {items.map(item => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span>{item.product_name} x{item.quantity}</span>
-                  <span>Rp {item.total?.toLocaleString() || item.subtotal?.toLocaleString() || 0}</span>
-                </div>
-              ))}
-              <div className="border-t border-white/10 pt-2 mt-2 font-bold flex justify-between">
-                <span>Total</span>
-                <span>Rp {order.total_amount?.toLocaleString() || 0}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Pembayaran & Upload */}
-          <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30 mb-4">
-            <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
-            <p className="text-sm">Transfer ke rekening berikut:</p>
-            <div className="bg-gray-800 rounded-lg p-3 mt-2">
-              <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
-              <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
-              <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
-            </div>
-            <p className="text-sm mt-2">Nominal: <span className="font-bold text-yellow-500">Rp {order.total_amount?.toLocaleString() || 0}</span></p>
+          {/* ========== TAB NAVIGATION ========== */}
+          <div className="flex border-b border-white/10 mt-4 mb-6">
+            <button
+              onClick={() => setActiveTab('detail')}
+              className={`py-2 px-4 font-medium text-sm transition-all relative ${
+                activeTab === 'detail' ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Package size={14} className="inline mr-1" /> Detail Pesanan
+              {activeTab === 'detail' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
+            </button>
             
-            {canUpload && (
-              <div className="mt-4">
-                <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer hover:bg-yellow-600 transition w-fit">
-                  <Upload size={16} />
-                  {uploading ? 'Mengupload...' : 'Upload Bukti Transfer'}
-                  <input type="file" accept="image/*" onChange={handleUploadProof} disabled={uploading} className="hidden" />
-                </label>
-                <p className="text-xs text-gray-400 mt-2">Format: JPG, PNG (max 2MB)</p>
-              </div>
-            )}
-
-            {order.payment_proof_url && (
-              <div className="mt-4">
-                <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
-                <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
-                  <Download size={14} /> Lihat bukti transfer
-                </a>
-              </div>
+            {(canTrack || hasValidCoordinates) && (
+              <button
+                onClick={() => setActiveTab('map')}
+                className={`py-2 px-4 font-medium text-sm transition-all relative ${
+                  activeTab === 'map' ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Map size={14} className="inline mr-1" /> Lacak Pengiriman
+                {activeTab === 'map' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
+              </button>
             )}
           </div>
 
-          {/* WhatsApp ke Customer */}
-          {order.guest_phone && (
-            <div className="mt-4 text-center border-t border-white/10 pt-4">
-              <p className="text-sm text-gray-400 mb-3">Simpan link pesanan Anda:</p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <button
-                  onClick={copyToClipboard}
-                  className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-600 transition"
-                >
-                  📋 Salin Link Pesanan
-                </button>
-                <a
-                  href={`https://wa.me/${order.guest_phone.replace(/[^0-9]/g, '')}?text=Halo%2C%20pesanan%20saya%20dengan%20nomor%20%23${order.order_number}%0A%0ALink%20pelacakan%3A%20${window.location.href}%0A%0ATotal%3A%20Rp%20${order.total_amount.toLocaleString()}%0AStatus%3A%20${order.status}%0A%0ATerima%20kasih.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition justify-center"
-                >
-                  <MessageCircle size={16} /> Kirim Link ke WhatsApp Saya
-                </a>
+          {/* ========== TAB: DETAIL PESANAN ========== */}
+          {activeTab === 'detail' && (
+            <div className="space-y-6">
+              {/* Info Pemesan & Produk */}
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <h2 className="font-semibold text-sm mb-2">Informasi Pemesan</h2>
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <p className="text-sm">{order.guest_name || 'Guest'}</p>
+                    <p className="text-sm text-gray-400">{order.guest_phone}</p>
+                    <p className="text-sm text-gray-400 mt-1">{order.shipping_address}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <h2 className="font-semibold text-sm mb-2">Produk Dipesan</h2>
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <div className="space-y-1">
+                      {items.map(item => (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span>{item.product_name} x{item.quantity}</span>
+                          <span>Rp {item.total?.toLocaleString() || item.subtotal?.toLocaleString() || 0}</span>
+                        </div>
+                      ))}
+                      <div className="border-t border-white/10 pt-2 mt-2 font-bold flex justify-between">
+                        <span>Total</span>
+                        <span>Rp {order.total_amount?.toLocaleString() || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {/* Pembayaran & Upload */}
+              <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
+                <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
+                <p className="text-sm">Transfer ke rekening berikut:</p>
+                <div className="bg-gray-800 rounded-lg p-3 mt-2">
+                  <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
+                  <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
+                  <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
+                </div>
+                <p className="text-sm mt-2">Nominal: <span className="font-bold text-yellow-500">Rp {order.total_amount?.toLocaleString() || 0}</span></p>
+                
+                {canUpload && (
+                  <div className="mt-4">
+                    <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer hover:bg-yellow-600 transition w-fit">
+                      <Upload size={16} />
+                      {uploading ? 'Mengupload...' : 'Upload Bukti Transfer'}
+                      <input type="file" accept="image/*" onChange={handleUploadProof} disabled={uploading} className="hidden" />
+                    </label>
+                    <p className="text-xs text-gray-400 mt-2">Format: JPG, PNG (max 2MB)</p>
+                  </div>
+                )}
+
+                {order.payment_proof_url && (
+                  <div className="mt-4">
+                    <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
+                    <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
+                      <Download size={14} /> Lihat bukti transfer
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* WhatsApp ke Customer */}
+              {order.guest_phone && (
+                <div className="text-center border-t border-white/10 pt-4">
+                  <p className="text-sm text-gray-400 mb-3">Simpan link pesanan Anda:</p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <button onClick={copyToClipboard} className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-600 transition">
+                      📋 Salin Link Pesanan
+                    </button>
+                    <a
+                      href={`https://wa.me/${order.guest_phone.replace(/[^0-9]/g, '')}?text=Halo%2C%20pesanan%20saya%20dengan%20nomor%20%23${order.order_number}%0A%0ALink%20pelacakan%3A%20${window.location.href}%0A%0ATotal%3A%20Rp%20${order.total_amount.toLocaleString()}%0AStatus%3A%20${order.status}%0A%0ATerima%20kasih.`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition justify-center"
+                    >
+                      <MessageCircle size={16} /> Kirim Link ke WhatsApp Saya
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========== TAB: PETA TRACKING ========== */}
+          {activeTab === 'map' && (
+            <div className="space-y-4">
+              {/* Status Pengiriman */}
+              <div className="bg-gray-800/50 rounded-lg p-4">
+                <h3 className="font-semibold flex items-center gap-2 mb-3">
+                  <Truck size={18} className="text-yellow-500" />
+                  Status Pengiriman
+                </h3>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm">Status: <span className="font-bold uppercase text-yellow-500">{delivery?.status || 'assigned'}</span></p>
+                    {courier && <p className="text-sm text-gray-400">Kurir: {courier.full_name || courier.email}</p>}
+                  </div>
+                  {isTrackingActive && (
+                    <div className="flex items-center gap-1 text-green-500 text-xs">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      Live Tracking Aktif
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Peta */}
+              {hasValidCoordinates ? (
+                <div className="bg-gray-800/50 rounded-lg overflow-hidden" style={{ height: '500px' }}>
+                  <MapContainer
+                    center={courierLocation || storeLocation || destination || [-6.200000, 106.816666]}
+                    zoom={13}
+                    style={{ height: '100%', width: '100%' }}
+                    whenCreated={(map) => { mapRef.current = map; }}
+                  >
+                    <TileLayer
+                      url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'
+                    />
+                    
+                    {/* Store Marker */}
+                    {storeLocation && (
+                      <Marker position={storeLocation} icon={storeIcon}>
+                        <Popup>📍 Store: {store?.name}</Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* Destination Marker */}
+                    {destination && (
+                      <Marker position={destination} icon={destIcon}>
+                        <Popup>🏠 Tujuan: {order.shipping_address}</Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* Courier Marker */}
+                    {courierLocation && (
+                      <Marker position={courierLocation} icon={courierIcon}>
+                        <Popup>🛵 Kurir sedang dalam perjalanan</Popup>
+                      </Marker>
+                    )}
+                    
+                    {/* Route Line from Courier to Destination */}
+                    {courierLocation && destination && (
+                      <Polyline
+                        positions={[courierLocation, destination]}
+                        color="#F59E0B"
+                        weight={3}
+                        opacity={0.7}
+                        dashArray="5, 10"
+                      />
+                    )}
+                    
+                    {/* Route Line from Store to Destination (if courier not started) */}
+                    {!courierLocation && storeLocation && destination && (
+                      <Polyline
+                        positions={[storeLocation, destination]}
+                        color="#6B7280"
+                        weight={2}
+                        opacity={0.4}
+                      />
+                    )}
+                  </MapContainer>
+                </div>
+              ) : (
+                <div className="bg-gray-800/50 rounded-lg p-8 text-center">
+                  <Globe size={48} className="mx-auto text-gray-500 mb-3" />
+                  <p className="text-gray-400">Lokasi pengiriman belum tersedia</p>
+                  <p className="text-xs text-gray-500 mt-2">Pesanan akan segera diproses oleh kurir</p>
+                </div>
+              )}
+
+              {/* Tracking Info */}
+              {delivery && (
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h3 className="font-semibold text-sm mb-2">Riwayat Tracking</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Penugasan Kurir:</span>
+                      <span>{new Date(delivery.created_at).toLocaleString()}</span>
+                    </div>
+                    {delivery.started_at && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Mulai Pengiriman:</span>
+                        <span>{new Date(delivery.started_at).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {delivery.completed_at && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Selesai:</span>
+                        <span>{new Date(delivery.completed_at).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

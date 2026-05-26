@@ -34,6 +34,7 @@ import AdminShippingSettings from './pages/AdminShippingSettings'
 import TrackOrderPage from './pages/TrackOrderPage'
 import AdminStoreCategories from './pages/AdminStoreCategories'
 import SuperAdminCategories from './pages/SuperAdminCategories'
+import CourierDashboard from './pages/CourierDashboard';
 
 function App() {
   return (
@@ -71,6 +72,7 @@ function App() {
       <Route path="/track-order/:id" element={<TrackOrderPage />} />
       <Route path="/admin/store-categories" element={<AdminStoreCategories />} />
       <Route path="/admin/master-categories" element={<SuperAdminCategories />} />
+      <Route path="/courier/dashboard" element={<CourierDashboard />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>
