@@ -2,10 +2,10 @@
 // Dashboard untuk kurir (PWA-ready)
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
   Package, MapPin, Truck, CheckCircle, Clock, 
-  Navigation, Phone, Mail, LogOut, Play, StopCircle
+  Navigation, Phone, LogOut, Play, StopCircle
 } from 'lucide-react';
 
 export default function CourierDashboard() {
@@ -48,75 +48,76 @@ export default function CourierDashboard() {
   };
 
   const loadAssignments = async (courierId) => {
-  setLoading(true);
-  
-  try {
-    // Step 1: Ambil delivery assignments
-    const { data: assignments, error: assignmentsError } = await supabase
-      .from('delivery_assignments')
-      .select('*')
-      .eq('courier_id', courierId)
-      .order('created_at', { ascending: false });
+    setLoading(true);
     
-    if (assignmentsError) throw assignmentsError;
-    
-    console.log('Assignments found:', assignments?.length);
-    
-    if (!assignments || assignments.length === 0) {
-      setAssignments([]);
-      setActiveDelivery(null);
-      setLoading(false);
-      return;
-    }
-    
-    // Step 2: Ambil orders berdasarkan order_id dari assignments
-    const orderIds = assignments.map(a => a.order_id);
-    const { data: orders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, order_number, total_amount, shipping_address, shipping_latitude, shipping_longitude, guest_name, guest_phone, notes, store_id')
-      .in('id', orderIds);
-    
-    if (ordersError) throw ordersError;
-    
-    // Step 3: Ambil stores berdasarkan store_id dari orders
-    const storeIds = [...new Set((orders || []).map(o => o.store_id).filter(id => id))];
-    let storesMap = new Map();
-    
-    if (storeIds.length > 0) {
-      const { data: stores, error: storesError } = await supabase
-        .from('stores')
-        .select('id, name, latitude, longitude, address')
-        .in('id', storeIds);
+    try {
+      // Step 1: Ambil delivery assignments
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('delivery_assignments')
+        .select('*')
+        .eq('courier_id', courierId)
+        .order('created_at', { ascending: false });
       
-      if (!storesError && stores) {
-        stores.forEach(s => storesMap.set(s.id, s));
+      if (assignmentsError) throw assignmentsError;
+      
+      if (!assignments || assignments.length === 0) {
+        setAssignments([]);
+        setActiveDelivery(null);
+        setLoading(false);
+        return;
       }
+      
+      // Step 2: Ambil orders
+      const orderIds = assignments.map(a => a.order_id);
+      const { data: orders, error: ordersError } = await supabase
+        .from('orders')
+        .select('id, order_number, total_amount, shipping_address, shipping_latitude, shipping_longitude, guest_name, guest_phone, notes, store_id, status')
+        .in('id', orderIds);
+      
+      if (ordersError) throw ordersError;
+      
+      // Step 3: Ambil stores
+      const storeIds = [...new Set((orders || []).map(o => o.store_id).filter(id => id))];
+      let storesMap = new Map();
+      
+      if (storeIds.length > 0) {
+        const { data: stores, error: storesError } = await supabase
+          .from('stores')
+          .select('id, name, latitude, longitude, address')
+          .in('id', storeIds);
+        
+        if (!storesError && stores) {
+          stores.forEach(s => storesMap.set(s.id, s));
+        }
+      }
+      
+      // Step 4: Gabungkan data
+      const enrichedAssignments = assignments.map(assignment => {
+        const order = orders?.find(o => o.id === assignment.order_id);
+        const store = order ? storesMap.get(order.store_id) : null;
+        
+        return {
+          ...assignment,
+          orders: order ? { ...order, stores: store } : null
+        };
+      });
+      
+      setAssignments(enrichedAssignments);
+      
+      // Cari active delivery (status delivery belum selesai DAN order status belum delivered/cancelled)
+      const active = enrichedAssignments.find(a => {
+        const deliveryNotFinished = a.status !== 'completed' && a.status !== 'cancelled';
+        const orderNotFinished = a.orders?.status !== 'delivered' && a.orders?.status !== 'cancelled';
+        return deliveryNotFinished && orderNotFinished;
+      });
+      setActiveDelivery(active || null);
+      
+    } catch (err) {
+      console.error('Error loading assignments:', err);
     }
     
-    // Step 4: Gabungkan semua data
-    const enrichedAssignments = assignments.map(assignment => {
-      const order = orders?.find(o => o.id === assignment.order_id);
-      const store = order ? storesMap.get(order.store_id) : null;
-      
-      return {
-        ...assignment,
-        orders: order ? { ...order, stores: store } : null
-      };
-    });
-    
-    setAssignments(enrichedAssignments);
-    
-    // Cari active delivery (belum completed/cancelled)
-    const active = enrichedAssignments.find(a => a.status !== 'completed' && a.status !== 'cancelled');
-    setActiveDelivery(active || null);
-    console.log('Active delivery:', active);
-    
-  } catch (err) {
-    console.error('Error loading assignments:', err);
-  }
-  
-  setLoading(false);
-};
+    setLoading(false);
+  };
 
   // ========== FUNGSI TRACKING GPS ==========
   const startTracking = async () => {
@@ -140,7 +141,7 @@ export default function CourierDashboard() {
     // Mulai watch position
     const id = navigator.geolocation.watchPosition(
       async (position) => {
-        const { latitude, longitude, heading, speed } = position.coords;
+        const { latitude, longitude, heading } = position.coords;
         
         // Broadcast ke Supabase Realtime
         const channel = supabase.channel(`tracking:${activeDelivery.id}`);
@@ -151,7 +152,6 @@ export default function CourierDashboard() {
             lat: latitude,
             lng: longitude,
             heading: heading || 0,
-            speed: speed || 0,
             timestamp: new Date().toISOString()
           }
         });
@@ -212,7 +212,6 @@ export default function CourierDashboard() {
     }
     if (newStatus === 'completed') {
       updates.completed_at = new Date().toISOString();
-      // Jika selesai, stop tracking
       if (trackingActive) stopTracking();
     }
     
@@ -224,7 +223,6 @@ export default function CourierDashboard() {
     if (error) {
       alert('Gagal update status: ' + error.message);
     } else {
-      // Refresh data
       await loadAssignments(user.id);
     }
   };
@@ -318,7 +316,6 @@ export default function CourierDashboard() {
             
             {/* Tombol Aksi */}
             <div className="space-y-3">
-              {/* Tombol Navigasi */}
               <button
                 onClick={openNavigation}
                 className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
@@ -326,7 +323,6 @@ export default function CourierDashboard() {
                 <Navigation size={18} /> Buka Navigasi Google Maps
               </button>
               
-              {/* Tombol Tracking GPS */}
               {!trackingActive ? (
                 <button
                   onClick={startTracking}
@@ -343,7 +339,6 @@ export default function CourierDashboard() {
                 </button>
               )}
               
-              {/* Tombol Update Status */}
               {activeDelivery.status === 'assigned' && (
                 <button
                   onClick={() => updateDeliveryStatus('picking_up')}
@@ -383,7 +378,6 @@ export default function CourierDashboard() {
             )}
           </div>
         ) : (
-          // ========== TIDAK ADA PENGIRIMAN AKTIF ==========
           <div className="bg-gray-900/50 rounded-xl p-8 text-center border border-white/10 mb-6">
             <Truck size={48} className="mx-auto text-gray-500 mb-3" />
             <p className="text-gray-400">Tidak ada pengiriman aktif</p>

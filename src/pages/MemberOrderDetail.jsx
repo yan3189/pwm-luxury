@@ -48,6 +48,8 @@ export default function MemberOrderDetail() {
 
   const fetchOrder = async () => {
     setLoading(true);
+    console.log('===== FETCHING ORDER DETAIL =====');
+    console.log('Order ID:', id);
     
     // Step 1: Ambil order
     const { data: orderData, error: orderError } = await supabase
@@ -62,17 +64,37 @@ export default function MemberOrderDetail() {
       return;
     }
     
+    console.log('Order data retrieved:', {
+      id: orderData.id,
+      order_number: orderData.order_number,
+      delivery_type: orderData.delivery_type,
+      status: orderData.status,
+      shipping_latitude: orderData.shipping_latitude,
+      shipping_longitude: orderData.shipping_longitude
+    });
+    
     setOrder(orderData);
     
-    // Step 2: Ambil store
-    if (orderData.store_id) {
-      const { data: storeData } = await supabase
-        .from('stores')
-        .select('id, name, slug, bank_name, bank_account_number, bank_account_name, phone, email, alamat, latitude, longitude')
-        .eq('id', orderData.store_id)
-        .single();
-      if (storeData) setStore(storeData);
-    }
+    // Step 2: Ambil store (query sederhana, tanpa nested select)
+if (orderData.store_id) {
+  console.log('Fetching store with ID:', orderData.store_id);
+  const { data: storeData, error: storeError } = await supabase
+    .from('stores')
+    .select('*')  // SELECT SEMUA KOLOM, tanpa nested
+    .eq('id', orderData.store_id)
+    .single();
+  
+  if (storeError) {
+    console.error('Error fetching store:', storeError);
+  } else {
+    console.log('Store data retrieved:', {
+      name: storeData.name,
+      latitude: storeData.latitude,
+      longitude: storeData.longitude
+    });
+    setStore(storeData);
+  }
+}
     
     // Step 3: Ambil items
     const { data: itemsData } = await supabase
@@ -93,13 +115,23 @@ export default function MemberOrderDetail() {
     
     // Step 5: Ambil delivery assignment & tracking
     if (orderData.delivery_type === 'internal') {
-      const { data: deliveryData } = await supabase
+      console.log('Order has internal delivery, fetching delivery_assignments...');
+      const { data: deliveryData, error: deliveryError } = await supabase
         .from('delivery_assignments')
         .select('*, courier:users(id, email, full_name)')
         .eq('order_id', id)
         .maybeSingle();
       
+      if (deliveryError) {
+        console.error('Error fetching delivery assignment:', deliveryError);
+      }
+      
       if (deliveryData) {
+        console.log('Delivery assignment found:', {
+          id: deliveryData.id,
+          status: deliveryData.status,
+          courier: deliveryData.courier?.full_name || deliveryData.courier?.email
+        });
         setDelivery(deliveryData);
         if (deliveryData.courier) setCourier(deliveryData.courier);
         
@@ -112,59 +144,80 @@ export default function MemberOrderDetail() {
           .limit(1);
         
         if (points && points[0]) {
+          console.log('Latest tracking point:', points[0]);
           setCourierLocation([points[0].latitude, points[0].longitude]);
         }
+      } else {
+        console.log('No delivery assignment found for this order');
       }
+    } else {
+      console.log('Order delivery_type is not internal:', orderData.delivery_type);
     }
     
     setLoading(false);
+    console.log('===== FETCH COMPLETE =====');
   };
 
   // ========== REALTIME SUBSCRIPTION ==========
   useEffect(() => {
-    if (!delivery || !delivery.id) return;
+    if (!delivery || !delivery.id) {
+      console.log('No delivery assignment, skipping realtime subscription');
+      return;
+    }
+    
+    console.log('Setting up realtime subscription for delivery:', delivery.id);
     
     const channel = supabase
       .channel(`tracking:${delivery.id}`)
       .on('broadcast', { event: 'location-update' }, (payload) => {
-        const { lat, lng } = payload.payload;
+        const { lat, lng, heading, timestamp } = payload.payload;
+        console.log('📍 Location update received:', { lat, lng, heading, timestamp });
         
-        // Animasi smooth
+        // Animasi smooth movement
         if (courierLocation) {
           const startLat = courierLocation[0];
           const startLng = courierLocation[1];
+          const endLat = lat;
+          const endLng = lng;
           const startTime = Date.now();
-          const duration = 3000;
+          const duration = 2000; // 2 detik animasi
           
           if (animationRef.current) cancelAnimationFrame(animationRef.current);
           
           function animate() {
             const elapsed = Date.now() - startTime;
             const t = Math.min(1, elapsed / duration);
-            const newLat = startLat + (lat - startLat) * t;
-            const newLng = startLng + (lng - startLng) * t;
+            const newLat = startLat + (endLat - startLat) * t;
+            const newLng = startLng + (endLng - startLng) * t;
             setCourierLocation([newLat, newLng]);
-            if (t < 1) animationRef.current = requestAnimationFrame(animate);
-            else animationRef.current = null;
+            if (t < 1) {
+              animationRef.current = requestAnimationFrame(animate);
+            } else {
+              animationRef.current = null;
+            }
           }
           animate();
         } else {
           setCourierLocation([lat, lng]);
         }
         
+        // Update map center jika diperlukan
         if (mapRef.current && lat && lng) {
           mapRef.current.setView([lat, lng], 14);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
     
     setIsTrackingActive(true);
     
     return () => {
+      console.log('Cleaning up realtime subscription');
       supabase.removeChannel(channel);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [delivery, courierLocation]);
+  }, [delivery]);
 
   // ========== UPLOAD BUKTI ==========
   const handleUploadProof = async (e) => {
@@ -231,8 +284,15 @@ export default function MemberOrderDetail() {
     return <span className={`text-xs px-2 py-1 rounded-full ${colors[status] || colors.pending}`}>{labels[status] || status}</span>;
   };
 
-  const canTrack = delivery && delivery.status !== 'completed' && delivery.status !== 'cancelled';
-  const hasValidCoordinates = store?.latitude && store?.longitude && order?.shipping_latitude && order?.shipping_longitude;
+  // Kondisi untuk menampilkan tab tracking
+  // Tab tracking hanya muncul jika delivery ada, status delivery belum completed/cancelled, DAN order status belum delivered/cancelled
+const showTrackingTab = delivery && 
+  delivery.status !== 'completed' && 
+  delivery.status !== 'cancelled' &&
+  order?.status !== 'delivered' &&
+  order?.status !== 'cancelled';
+  console.log('showTrackingTab:', showTrackingTab);
+  console.log('delivery status:', delivery?.status);
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
   if (!order) return <div className="bg-black min-h-screen text-white p-8 text-center">Pesanan tidak ditemukan</div>;
@@ -268,7 +328,8 @@ export default function MemberOrderDetail() {
               {activeTab === 'detail' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
             </button>
             
-            {canTrack && hasValidCoordinates && (
+            {/* Tab Lacak Pengiriman - muncul jika ada delivery */}
+            {showTrackingTab && (
               <button
                 onClick={() => setActiveTab('map')}
                 className={`py-2 px-4 font-medium text-sm transition-all relative ${
@@ -389,47 +450,73 @@ export default function MemberOrderDetail() {
               </div>
 
               {/* Peta */}
-              <div className="bg-gray-800/50 rounded-lg overflow-hidden" style={{ height: '500px' }}>
-                <MapContainer
-                  center={courierLocation || [store?.latitude || -6.2, store?.longitude || 106.816]}
-                  zoom={13}
-                  style={{ height: '100%', width: '100%' }}
-                  whenCreated={(map) => { mapRef.current = map; }}
-                >
-                  <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'
-                  />
-                  
-                  {store?.latitude && store?.longitude && (
-                    <Marker position={[store.latitude, store.longitude]}>
-                      <Popup>📍 Store: {store.name}</Popup>
-                    </Marker>
+<div className="bg-gray-800/50 rounded-lg overflow-hidden" style={{ height: '500px' }}>
+  {(store?.latitude || order?.shipping_latitude) ? (
+    <MapContainer
+      center={courierLocation || [store?.latitude || -6.2, store?.longitude || 106.816]}
+      zoom={13}
+      style={{ height: '100%', width: '100%' }}
+      whenCreated={(map) => { mapRef.current = map; }}
+    >
+      <TileLayer
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'
+      />
+      
+      {/* Store Marker */}
+      {store?.latitude && store?.longitude && (
+        <Marker position={[store.latitude, store.longitude]}>
+          <Popup>📍 Store: {store.name}</Popup>
+        </Marker>
+      )}
+      
+      {/* Destination Marker */}
+      {order?.shipping_latitude && order?.shipping_longitude && (
+        <Marker position={[order.shipping_latitude, order.shipping_longitude]}>
+          <Popup>🏠 Tujuan: {order.shipping_address}</Popup>
+        </Marker>
+      )}
+      
+      {/* Courier Marker */}
+      {courierLocation && (
+        <Marker position={courierLocation}>
+          <Popup>🛵 Kurir sedang dalam perjalanan</Popup>
+        </Marker>
+      )}
+      
+      {/* Route Line */}
+      {courierLocation && order?.shipping_latitude && order?.shipping_longitude && (
+        <Polyline
+          positions={[courierLocation, [order.shipping_latitude, order.shipping_longitude]]}
+          color="#F59E0B"
+          weight={3}
+          opacity={0.7}
+          dashArray="5, 10"
+        />
+      )}
+    </MapContainer>
+  ) : (
+    <div className="h-full flex items-center justify-center text-gray-400">
+      <div className="text-center">
+        <p>Koordinat tidak tersedia</p>
+        <p className="text-xs mt-2">Pastikan store dan alamat pengiriman memiliki koordinat</p>
+      </div>
+    </div>
+  )}
+</div>
+
+              {/* Informasi Tracking */}
+              {delivery && (
+                <div className="bg-gray-800/50 rounded-lg p-4 text-sm">
+                  <p><span className="text-gray-400">Status Pengiriman:</span> {delivery.status === 'on_delivery' ? 'Sedang dalam perjalanan' : delivery.status === 'picking_up' ? 'Mengambil pesanan di store' : delivery.status}</p>
+                  {delivery.started_at && (
+                    <p className="mt-1"><span className="text-gray-400">Mulai Pengiriman:</span> {new Date(delivery.started_at).toLocaleString()}</p>
                   )}
-                  
-                  {order?.shipping_latitude && order?.shipping_longitude && (
-                    <Marker position={[order.shipping_latitude, order.shipping_longitude]}>
-                      <Popup>🏠 Tujuan: {order.shipping_address}</Popup>
-                    </Marker>
+                  {delivery.completed_at && (
+                    <p className="mt-1"><span className="text-gray-400">Selesai:</span> {new Date(delivery.completed_at).toLocaleString()}</p>
                   )}
-                  
-                  {courierLocation && (
-                    <Marker position={courierLocation}>
-                      <Popup>🛵 Kurir sedang dalam perjalanan</Popup>
-                    </Marker>
-                  )}
-                  
-                  {courierLocation && order?.shipping_latitude && order?.shipping_longitude && (
-                    <Polyline
-                      positions={[courierLocation, [order.shipping_latitude, order.shipping_longitude]]}
-                      color="#F59E0B"
-                      weight={3}
-                      opacity={0.7}
-                      dashArray="5, 10"
-                    />
-                  )}
-                </MapContainer>
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
