@@ -1,19 +1,20 @@
 // ========== FILE: src/pages/CourierDashboard.jsx ==========
-// Dashboard untuk kurir (PWA-ready)
+// Dashboard untuk kurir - multiple assignments support
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { 
   Package, MapPin, Truck, CheckCircle, Clock, 
-  Navigation, Phone, LogOut, Play, StopCircle
+  Navigation, Phone, LogOut, Play, StopCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function CourierDashboard() {
   const [user, setUser] = useState(null);
   const [assignments, setAssignments] = useState([]);
-  const [activeDelivery, setActiveDelivery] = useState(null);
-  const [trackingActive, setTrackingActive] = useState(false);
-  const [watchId, setWatchId] = useState(null);
+  const [activeDeliveries, setActiveDeliveries] = useState([]);
+  const [completedDeliveries, setCompletedDeliveries] = useState([]);
+  const [expandedDelivery, setExpandedDelivery] = useState(null);
+  const [trackingStates, setTrackingStates] = useState({});
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -29,7 +30,6 @@ export default function CourierDashboard() {
       return;
     }
     
-    // Cek role user
     const { data: userData, error } = await supabase
       .from('users')
       .select('role, full_name, email, phone')
@@ -51,7 +51,7 @@ export default function CourierDashboard() {
     setLoading(true);
     
     try {
-      // Step 1: Ambil delivery assignments
+      // Ambil delivery assignments
       const { data: assignments, error: assignmentsError } = await supabase
         .from('delivery_assignments')
         .select('*')
@@ -62,12 +62,13 @@ export default function CourierDashboard() {
       
       if (!assignments || assignments.length === 0) {
         setAssignments([]);
-        setActiveDelivery(null);
+        setActiveDeliveries([]);
+        setCompletedDeliveries([]);
         setLoading(false);
         return;
       }
       
-      // Step 2: Ambil orders
+      // Ambil orders
       const orderIds = assignments.map(a => a.order_id);
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
@@ -76,7 +77,7 @@ export default function CourierDashboard() {
       
       if (ordersError) throw ordersError;
       
-      // Step 3: Ambil stores
+      // Ambil stores
       const storeIds = [...new Set((orders || []).map(o => o.store_id).filter(id => id))];
       let storesMap = new Map();
       
@@ -91,26 +92,29 @@ export default function CourierDashboard() {
         }
       }
       
-      // Step 4: Gabungkan data
-      const enrichedAssignments = assignments.map(assignment => {
+      // Gabungkan data
+      const enriched = assignments.map(assignment => {
         const order = orders?.find(o => o.id === assignment.order_id);
         const store = order ? storesMap.get(order.store_id) : null;
-        
         return {
           ...assignment,
           orders: order ? { ...order, stores: store } : null
         };
       });
       
-      setAssignments(enrichedAssignments);
+      setAssignments(enriched);
       
-      // Cari active delivery (status delivery belum selesai DAN order status belum delivered/cancelled)
-      const active = enrichedAssignments.find(a => {
+      // Pisahkan active (belum selesai) dan completed
+      const active = enriched.filter(a => {
         const deliveryNotFinished = a.status !== 'completed' && a.status !== 'cancelled';
         const orderNotFinished = a.orders?.status !== 'delivered' && a.orders?.status !== 'cancelled';
         return deliveryNotFinished && orderNotFinished;
       });
-      setActiveDelivery(active || null);
+      
+      const completed = enriched.filter(a => a.status === 'completed' || a.orders?.status === 'delivered');
+      
+      setActiveDeliveries(active);
+      setCompletedDeliveries(completed);
       
     } catch (err) {
       console.error('Error loading assignments:', err);
@@ -119,106 +123,83 @@ export default function CourierDashboard() {
     setLoading(false);
   };
 
-  // ========== FUNGSI TRACKING GPS ==========
-  const startTracking = async () => {
-    if (!activeDelivery) {
-      alert('Tidak ada pengiriman aktif');
-      return;
-    }
+  // ========== TRACKING GPS ==========
+  const startTracking = async (deliveryId) => {
+    const delivery = assignments.find(a => a.id === deliveryId);
+    if (!delivery) return;
     
     if (!navigator.geolocation) {
       alert('Browser tidak mendukung GPS');
       return;
     }
     
-    // Minta izin lokasi
     const permission = await navigator.permissions.query({ name: 'geolocation' });
     if (permission.state === 'denied') {
       alert('Izin lokasi ditolak. Silakan izinkan di pengaturan browser.');
       return;
     }
     
-    // Mulai watch position
     const id = navigator.geolocation.watchPosition(
       async (position) => {
         const { latitude, longitude, heading } = position.coords;
         
-        // Broadcast ke Supabase Realtime
-        const channel = supabase.channel(`tracking:${activeDelivery.id}`);
+        const channel = supabase.channel(`tracking:${deliveryId}`);
         await channel.send({
           type: 'broadcast',
           event: 'location-update',
-          payload: {
-            lat: latitude,
-            lng: longitude,
-            heading: heading || 0,
-            timestamp: new Date().toISOString()
-          }
+          payload: { lat: latitude, lng: longitude, heading: heading || 0, timestamp: new Date().toISOString() }
         });
         
-        // Simpan ke tracking_points untuk riwayat
-        await supabase
-          .from('tracking_points')
-          .insert({
-            delivery_id: activeDelivery.id,
-            latitude,
-            longitude,
-            recorded_at: new Date().toISOString()
-          });
+        await supabase.from('tracking_points').insert({
+          delivery_id: deliveryId,
+          latitude, longitude,
+          recorded_at: new Date().toISOString()
+        });
         
         console.log('📍 Location sent:', latitude, longitude);
       },
       (error) => {
         console.error('Geolocation error:', error);
-        if (error.code === 1) {
-          alert('Izin lokasi ditolak. Aktifkan GPS untuk tracking.');
-        } else if (error.code === 2) {
-          alert('Lokasi tidak tersedia. Pastikan GPS aktif.');
-        } else if (error.code === 3) {
-          alert('Timeout获取 lokasi. Coba lagi.');
-        }
+        if (error.code === 1) alert('Izin lokasi ditolak.');
+        else if (error.code === 2) alert('Lokasi tidak tersedia.');
+        else if (error.code === 3) alert('Timeout获取 lokasi.');
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 10000
-      }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
     
-    setWatchId(id);
-    setTrackingActive(true);
+    setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: id, active: true } }));
     
-    // Update status delivery jika masih assigned
-    if (activeDelivery.status === 'assigned') {
-      await updateDeliveryStatus('picking_up');
+    if (delivery.status === 'assigned') {
+      await updateDeliveryStatus(deliveryId, 'picking_up');
     }
   };
   
-  const stopTracking = () => {
-    if (watchId) {
-      navigator.geolocation.clearWatch(watchId);
-      setWatchId(null);
+  const stopTracking = (deliveryId) => {
+    const state = trackingStates[deliveryId];
+    if (state?.watchId) {
+      navigator.geolocation.clearWatch(state.watchId);
+      setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: null, active: false } }));
     }
-    setTrackingActive(false);
   };
   
-  // ========== UPDATE STATUS DELIVERY ==========
-  const updateDeliveryStatus = async (newStatus) => {
-    if (!activeDelivery) return;
+  // ========== UPDATE STATUS ==========
+  const updateDeliveryStatus = async (deliveryId, newStatus) => {
+    const delivery = assignments.find(a => a.id === deliveryId);
+    if (!delivery) return;
     
     const updates = { status: newStatus };
-    if (newStatus === 'on_delivery' && !activeDelivery.started_at) {
+    if (newStatus === 'on_delivery' && !delivery.started_at) {
       updates.started_at = new Date().toISOString();
     }
     if (newStatus === 'completed') {
       updates.completed_at = new Date().toISOString();
-      if (trackingActive) stopTracking();
+      stopTracking(deliveryId);
     }
     
     const { error } = await supabase
       .from('delivery_assignments')
       .update(updates)
-      .eq('id', activeDelivery.id);
+      .eq('id', deliveryId);
     
     if (error) {
       alert('Gagal update status: ' + error.message);
@@ -228,20 +209,20 @@ export default function CourierDashboard() {
   };
   
   // ========== BUKA NAVIGASI ==========
-  const openNavigation = () => {
-    if (!activeDelivery || !activeDelivery.orders?.shipping_latitude) {
+  const openNavigation = (delivery) => {
+    if (!delivery.orders?.shipping_latitude) {
       alert('Alamat tujuan tidak tersedia');
       return;
     }
-    
-    const dest = `${activeDelivery.orders.shipping_latitude},${activeDelivery.orders.shipping_longitude}`;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-    window.open(url, '_blank');
+    const dest = `${delivery.orders.shipping_latitude},${delivery.orders.shipping_longitude}`;
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}`, '_blank');
   };
   
   // ========== LOGOUT ==========
   const handleLogout = async () => {
-    if (trackingActive) stopTracking();
+    Object.keys(trackingStates).forEach(deliveryId => {
+      if (trackingStates[deliveryId]?.active) stopTracking(deliveryId);
+    });
     await supabase.auth.signOut();
     navigate('/admin/login');
   };
@@ -265,150 +246,153 @@ export default function CourierDashboard() {
       </div>
       
       <div className="max-w-lg mx-auto px-4 py-6 pb-24">
-        {/* ========== ACTIVE DELIVERY ========== */}
-        {activeDelivery ? (
-          <div className="bg-gray-900/50 rounded-xl p-5 border border-yellow-500/30 mb-6">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h2 className="font-bold text-lg flex items-center gap-2">
-                  <Truck size={20} className="text-yellow-500" />
-                  Pengiriman Aktif
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  Order #{activeDelivery.orders?.order_number}
-                </p>
-              </div>
-              <span className={`text-xs px-2 py-1 rounded-full ${
-                activeDelivery.status === 'assigned' ? 'bg-yellow-500/20 text-yellow-500' :
-                activeDelivery.status === 'picking_up' ? 'bg-blue-500/20 text-blue-400' :
-                activeDelivery.status === 'on_delivery' ? 'bg-green-500/20 text-green-400' :
-                'bg-gray-500/20 text-gray-400'
-              }`}>
-                {activeDelivery.status === 'assigned' ? 'Menunggu Pickup' :
-                 activeDelivery.status === 'picking_up' ? 'Pickup' :
-                 activeDelivery.status === 'on_delivery' ? 'Dalam Perjalanan' :
-                 activeDelivery.status}
-              </span>
+        
+        {/* ========== ACTIVE DELIVERIES ========== */}
+        <div className="mb-6">
+          <h2 className="font-semibold text-sm mb-3 flex items-center gap-2">
+            <Truck size={14} className="text-yellow-500" />
+            Pengiriman Aktif ({activeDeliveries.length})
+          </h2>
+          
+          {activeDeliveries.length === 0 ? (
+            <div className="bg-gray-900/50 rounded-xl p-6 text-center border border-white/10">
+              <Truck size={48} className="mx-auto text-gray-500 mb-3" />
+              <p className="text-gray-400">Tidak ada pengiriman aktif</p>
             </div>
-            
-            {/* Info Order */}
-            <div className="bg-gray-800/50 rounded-lg p-3 mb-4">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-400">Total:</span>
-                <span className="text-yellow-500">Rp {activeDelivery.orders?.total_amount?.toLocaleString()}</span>
-              </div>
-              <div className="text-sm mb-1">
-                <span className="text-gray-400">Alamat:</span>
-                <p className="text-xs text-gray-300 mt-1">{activeDelivery.orders?.shipping_address}</p>
-              </div>
-              {activeDelivery.orders?.guest_name && (
-                <div className="text-sm">
-                  <span className="text-gray-400">Penerima:</span>
-                  <span className="ml-2">{activeDelivery.orders.guest_name}</span>
-                  {activeDelivery.orders.guest_phone && (
-                    <a href={`tel:${activeDelivery.orders.guest_phone}`} className="ml-2 text-blue-400">
-                      <Phone size={12} className="inline" /> {activeDelivery.orders.guest_phone}
-                    </a>
+          ) : (
+            <div className="space-y-4">
+              {activeDeliveries.map(delivery => (
+                <div key={delivery.id} className="bg-gray-900/50 rounded-xl border border-yellow-500/30 overflow-hidden">
+                  <button
+                    onClick={() => setExpandedDelivery(expandedDelivery === delivery.id ? null : delivery.id)}
+                    className="w-full p-4 flex justify-between items-center hover:bg-gray-800/50 transition"
+                  >
+                    <div>
+                      <p className="font-semibold">Order #{delivery.orders?.order_number}</p>
+                      <p className="text-xs text-gray-400">{delivery.status === 'assigned' ? 'Menunggu Pickup' : delivery.status === 'picking_up' ? 'Pickup' : 'Dalam Perjalanan'}</p>
+                    </div>
+                    {expandedDelivery === delivery.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                  </button>
+                  
+                  {expandedDelivery === delivery.id && (
+                    <div className="p-4 pt-0 border-t border-white/10 space-y-3">
+                      {/* Info Order */}
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-400">Total:</span>
+                          <span className="text-yellow-500">Rp {delivery.orders?.total_amount?.toLocaleString()}</span>
+                        </div>
+                        <div className="text-sm mb-1">
+                          <span className="text-gray-400">Alamat:</span>
+                          <p className="text-xs text-gray-300 mt-1">{delivery.orders?.shipping_address}</p>
+                        </div>
+                        {delivery.orders?.guest_name && (
+                          <div className="text-sm">
+                            <span className="text-gray-400">Penerima:</span>
+                            <span className="ml-2">{delivery.orders.guest_name}</span>
+                            {delivery.orders.guest_phone && (
+                              <a href={`tel:${delivery.orders.guest_phone}`} className="ml-2 text-blue-400">
+                                <Phone size={12} className="inline" /> {delivery.orders.guest_phone}
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Tombol Aksi */}
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => openNavigation(delivery)}
+                          className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                        >
+                          <Navigation size={16} /> Buka Navigasi
+                        </button>
+                        
+                        {!trackingStates[delivery.id]?.active ? (
+                          <button
+                            onClick={() => startTracking(delivery.id)}
+                            className="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                          >
+                            <Play size={16} /> Mulai Tracking GPS
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => stopTracking(delivery.id)}
+                            className="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                          >
+                            <StopCircle size={16} /> Hentikan Tracking
+                          </button>
+                        )}
+                        
+                        {delivery.status === 'assigned' && (
+                          <button
+                            onClick={() => updateDeliveryStatus(delivery.id, 'picking_up')}
+                            className="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded-lg text-sm font-semibold"
+                          >
+                            Ambil Pesanan di Store
+                          </button>
+                        )}
+                        
+                        {delivery.status === 'picking_up' && (
+                          <button
+                            onClick={() => updateDeliveryStatus(delivery.id, 'on_delivery')}
+                            className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-semibold"
+                          >
+                            Mulai Antar ke Pelanggan
+                          </button>
+                        )}
+                        
+                        {delivery.status === 'on_delivery' && (
+                          <button
+                            onClick={() => updateDeliveryStatus(delivery.id, 'completed')}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle size={16} /> Tandai Selesai
+                          </button>
+                        )}
+                      </div>
+                      
+                      {trackingStates[delivery.id]?.active && (
+                        <div className="text-center">
+                          <div className="inline-flex items-center gap-2 text-xs text-green-400 bg-green-500/10 px-3 py-1 rounded-full">
+                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                            Live Tracking Aktif
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              ))}
             </div>
-            
-            {/* Tombol Aksi */}
-            <div className="space-y-3">
-              <button
-                onClick={openNavigation}
-                className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
-              >
-                <Navigation size={18} /> Buka Navigasi Google Maps
-              </button>
-              
-              {!trackingActive ? (
-                <button
-                  onClick={startTracking}
-                  className="w-full bg-green-600 hover:bg-green-700 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
-                >
-                  <Play size={18} /> Mulai Tracking GPS
-                </button>
-              ) : (
-                <button
-                  onClick={stopTracking}
-                  className="w-full bg-red-600 hover:bg-red-700 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
-                >
-                  <StopCircle size={18} /> Hentikan Tracking
-                </button>
-              )}
-              
-              {activeDelivery.status === 'assigned' && (
-                <button
-                  onClick={() => updateDeliveryStatus('picking_up')}
-                  className="w-full bg-yellow-600 hover:bg-yellow-700 py-3 rounded-lg font-semibold"
-                >
-                  Ambil Pesanan di Store
-                </button>
-              )}
-              
-              {activeDelivery.status === 'picking_up' && (
-                <button
-                  onClick={() => updateDeliveryStatus('on_delivery')}
-                  className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-semibold"
-                >
-                  Mulai Antar ke Pelanggan
-                </button>
-              )}
-              
-              {activeDelivery.status === 'on_delivery' && (
-                <button
-                  onClick={() => updateDeliveryStatus('completed')}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
-                >
-                  <CheckCircle size={18} /> Tandai Selesai
-                </button>
-              )}
-            </div>
-            
-            {/* Status Tracking */}
-            {trackingActive && (
-              <div className="mt-3 text-center">
-                <div className="inline-flex items-center gap-2 text-xs text-green-400 bg-green-500/10 px-3 py-1 rounded-full">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  Live Tracking Aktif
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-gray-900/50 rounded-xl p-8 text-center border border-white/10 mb-6">
-            <Truck size={48} className="mx-auto text-gray-500 mb-3" />
-            <p className="text-gray-400">Tidak ada pengiriman aktif</p>
-            <p className="text-xs text-gray-500 mt-1">Belum ada pesanan yang ditugaskan</p>
-          </div>
-        )}
+          )}
+        </div>
         
         {/* ========== RIWAYAT PENGIRIMAN ========== */}
         <div className="mt-6">
           <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-            <Clock size={14} /> Riwayat Pengiriman
+            <Clock size={14} /> Riwayat Pengiriman ({completedDeliveries.length})
           </h3>
-          <div className="space-y-2">
-            {assignments.filter(a => a.status === 'completed').length === 0 ? (
-              <p className="text-gray-500 text-sm text-center py-4">Belum ada riwayat</p>
-            ) : (
-              assignments.filter(a => a.status === 'completed').map(assignment => (
-                <div key={assignment.id} className="bg-gray-800/50 rounded-lg p-3">
+          
+          {completedDeliveries.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-4">Belum ada riwayat</p>
+          ) : (
+            <div className="space-y-2">
+              {completedDeliveries.map(delivery => (
+                <div key={delivery.id} className="bg-gray-800/50 rounded-lg p-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="text-sm font-medium">Order #{assignment.orders?.order_number}</p>
+                      <p className="text-sm font-medium">Order #{delivery.orders?.order_number}</p>
                       <p className="text-xs text-gray-400">
-                        Selesai: {new Date(assignment.completed_at).toLocaleDateString('id-ID')}
+                        Selesai: {new Date(delivery.completed_at || delivery.updated_at).toLocaleDateString('id-ID')}
                       </p>
                     </div>
                     <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">Selesai</span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
