@@ -184,29 +184,42 @@ export default function CourierDashboard() {
   
   // ========== UPDATE STATUS ==========
   const updateDeliveryStatus = async (deliveryId, newStatus) => {
-    const delivery = assignments.find(a => a.id === deliveryId);
-    if (!delivery) return;
+  const delivery = assignments.find(a => a.id === deliveryId);
+  if (!delivery) return;
+  
+  const updates = { status: newStatus };
+  if (newStatus === 'on_delivery' && !delivery.started_at) {
+    updates.started_at = new Date().toISOString();
+  }
+  if (newStatus === 'completed') {
+    updates.completed_at = new Date().toISOString();
+    stopTracking(deliveryId);
     
-    const updates = { status: newStatus };
-    if (newStatus === 'on_delivery' && !delivery.started_at) {
-      updates.started_at = new Date().toISOString();
-    }
-    if (newStatus === 'completed') {
-      updates.completed_at = new Date().toISOString();
-      stopTracking(deliveryId);
-    }
+    // 🔥 TAMBAHKAN: Update order status menjadi delivered
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update({ 
+        status: 'delivered', 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', delivery.order_id);
     
-    const { error } = await supabase
-      .from('delivery_assignments')
-      .update(updates)
-      .eq('id', deliveryId);
-    
-    if (error) {
-      alert('Gagal update status: ' + error.message);
-    } else {
-      await loadAssignments(user.id);
+    if (orderError) {
+      console.error('Gagal update order status:', orderError);
     }
-  };
+  }
+  
+  const { error } = await supabase
+    .from('delivery_assignments')
+    .update(updates)
+    .eq('id', deliveryId);
+  
+  if (error) {
+    alert('Gagal update status: ' + error.message);
+  } else {
+    await loadAssignments(user.id);
+  }
+};
   
   // ========== BUKA NAVIGASI ==========
   const openNavigation = (delivery) => {

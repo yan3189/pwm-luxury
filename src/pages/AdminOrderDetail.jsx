@@ -96,27 +96,30 @@ export default function AdminOrderDetail() {
       if (addressData) setAddress(addressData);
     }
     
-    // Step 6: Ambil delivery assignment
-    if (orderData.delivery_type === 'internal') {
-      const { data: deliveryData } = await supabase
-        .from('delivery_assignments')
-        .select('*, courier:users(id, email, full_name)')
-        .eq('order_id', id)
-        .maybeSingle();
-      
-      if (deliveryData) {
-        setDelivery(deliveryData);
-        if (deliveryData.courier) setCourier(deliveryData.courier);
-        
-        const { data: points } = await supabase
-          .from('tracking_points')
-          .select('*')
-          .eq('delivery_id', deliveryData.id)
-          .order('recorded_at', { ascending: false })
-          .limit(1);
-        if (points && points[0]) setCourierLocation([points[0].latitude, points[0].longitude]);
-      }
+    // ========== TAMBAHKAN INI ==========
+  // Step 6: Ambil delivery assignment (penugasan kurir)
+  const { data: deliveryData } = await supabase
+    .from('delivery_assignments')
+    .select('*, courier:users(id, email, full_name)')
+    .eq('order_id', id)
+    .maybeSingle();
+  
+  if (deliveryData) {
+    setDelivery(deliveryData);
+    if (deliveryData.courier) setCourier(deliveryData.courier);
+    
+    // Ambil tracking point terbaru
+    const { data: points } = await supabase
+      .from('tracking_points')
+      .select('*')
+      .eq('delivery_id', deliveryData.id)
+      .order('recorded_at', { ascending: false })
+      .limit(1);
+    if (points && points[0]) {
+      setCourierLocation([points[0].latitude, points[0].longitude]);
     }
+  }
+  // ========== SAMPAI SINI ==========
     
     // Step 7: Ambil daftar kurir untuk assign
     await fetchCouriers();
