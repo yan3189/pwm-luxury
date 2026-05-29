@@ -173,3 +173,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 }
+export default async function handler(req, res) {
+  console.log('Request method:', req.method);
+  console.log('Request body:', req.body);
+  
+  // ... kode selanjutnya
+}

@@ -71,13 +71,13 @@ const [store, setStore] = useState(null);
     setAddresses(addrs || []);
     
     if (addrs && addrs.length > 0) {
-      const defaultAddr = addrs.find(a => a.is_default) || addrs[0];
-      setSelectedAddressId(defaultAddr.id);
+        setAddresses(addrs || []);
+      //  setSelectedAddressId(defaultAddr.id);
       
       // Hitung ongkir setelah storeCoords dan alamat siap
-      if (defaultAddr.latitude && defaultAddr.longitude && coords) {
-        await calculateShipping(defaultAddr.latitude, defaultAddr.longitude, defaultAddr.id);
-      }
+    //  if (defaultAddr.latitude && defaultAddr.longitude && coords) {
+    //    await calculateShipping(defaultAddr.latitude, defaultAddr.longitude, defaultAddr.id);
+    //  }
     }
   }
   setLoading(false);
@@ -233,29 +233,30 @@ const [store, setStore] = useState(null);
           <div className="space-y-4">
             {user ? (
               <div className="bg-gray-900/50 rounded-xl p-4">
-                <h2 className="font-semibold mb-2">Alamat Pengiriman</h2>
-                <select
-                  className="w-full p-2 rounded bg-black/50 border border-white/20 mb-2"
-                  value={selectedAddressId || ""}
-                  onChange={(e) => handleAddressSelect(e.target.value)}
-                >
-                  <option value="" disabled>-- Pilih alamat pengiriman --</option>
-                  {addresses.map(addr => (
-                    <option key={addr.id} value={addr.id}>
-                      {addr.label} - {addr.address_text}
-                    </option>
-                  ))}
-                </select>
-                
-                {!selectedAddressId && (
-                  <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat terlebih dahulu</p>
-                )}
-                {selectedAddressId && !isShippingCalculated && (
-                  <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>
-                )}
-                {selectedAddressId && isShippingCalculated && shippingCost > 0 && (
-                  <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
-                )}
+  <h2 className="font-semibold mb-2">Alamat Pengiriman</h2>
+  <select
+    className="w-full p-2 rounded bg-black/50 border border-white/20 mb-2"
+    value={selectedAddressId || ""}
+    onChange={(e) => handleAddressSelect(e.target.value)}
+  >
+    <option value="" disabled>-- Pilih alamat pengiriman --</option>
+    {addresses.map(addr => (
+      <option key={addr.id} value={addr.id}>
+        {addr.label} - {addr.address_text}
+      </option>
+    ))}
+  </select>
+  
+  {!selectedAddressId && (
+    <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat terlebih dahulu</p>
+  )}
+  {selectedAddressId && !isShippingCalculated && (
+    <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>
+  )}
+  {selectedAddressId && isShippingCalculated && shippingCost > 0 && (
+    <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
+  )}
+
                 
                 <div className="mt-3">
                   <label className="flex items-center gap-2 text-sm">
