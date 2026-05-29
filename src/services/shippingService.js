@@ -85,12 +85,14 @@ export async function calculateDistanceWithCache(storeId, addressId) {
       body: JSON.stringify({ storeId, addressId })
     });
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'API call failed');
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
     
-    return await response.json();
+    if (!data.success) {
+      console.warn('API returned error:', data.error, data.message);
+      return null;
+    }
+    return data;
   } catch (error) {
     console.error('Distance calculation error:', error);
     return null;
