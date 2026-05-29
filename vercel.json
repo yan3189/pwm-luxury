@@ -5,7 +5,7 @@
     }
   },
   "routes": [
-    { "src": "/api/shipping/calculate-distance", "dest": "/api/shipping/calculate-distance" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/static/(.*)", "dest": "/static/$1" },
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
     { "src": "/favicon.ico", "dest": "/favicon.ico" },
