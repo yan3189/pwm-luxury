@@ -72,6 +72,26 @@ export default function TrackOrderPage() {
   const markerRef = useRef(null);
   const animationRef = useRef(null);
   const mapRef = useRef(null);
+  const [routePolyline, setRoutePolyline] = useState([]);
+
+function decodePolyline(encoded) {
+  if (!encoded) return [];
+  let points = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
+}
 
   useEffect(() => {
     if (id) {
@@ -112,7 +132,25 @@ export default function TrackOrderPage() {
         .single();
       if (storeData) setStore(storeData);
     }
+    // Ambil polyline dari cache
+if (store && order && order.shipping_latitude && order.shipping_longitude) {
+  // Coba cari address_id (jika ada)
+  const addressId = order.address_id;
+  if (addressId) {
+    const { data: cacheData } = await supabase
+      .from('distance_cache')
+      .select('polyline')
+      .eq('store_id', store.id)
+      .eq('address_id', addressId)
+      .maybeSingle();
     
+    if (cacheData?.polyline) {
+      const decoded = decodePolyline(cacheData.polyline);
+      setRoutePolyline(decoded);
+    }
+  }
+}
+
     // Step 3: Ambil items
     const { data: itemsData } = await supabase
       .from('order_items')
@@ -471,6 +509,15 @@ export default function TrackOrderPage() {
                     style={{ height: '100%', width: '100%' }}
                     whenCreated={(map) => { mapRef.current = map; }}
                   >
+                    {/* Route Polyline dari Directions API */}
+{routePolyline && routePolyline.length > 0 && (
+  <Polyline
+    positions={routePolyline}
+    color="#2563EB"
+    weight={4}
+    opacity={0.8}
+  />
+)}
                     <TileLayer
                       url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'

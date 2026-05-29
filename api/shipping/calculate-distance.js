@@ -1,7 +1,8 @@
 // ============================================================
-// API: Hitung Jarak dengan Google Maps + Caching
+// API: Hitung Jarak dengan Google Maps Directions API + Caching
 // Endpoint: POST /api/shipping/calculate-distance
 // Body: { storeId, addressId }
+// Output: distance, duration, polyline, shippingCost
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -58,12 +59,12 @@ export default async function handler(req, res) {
     // ========== 1. CEK CACHE ==========
     const { data: cached, error: cacheError } = await supabase
       .from('distance_cache')
-      .select('distance_meters, duration_seconds')
+      .select('distance_meters, duration_seconds, polyline')
       .eq('store_id', storeId)
       .eq('address_id', addressId)
       .maybeSingle();
     
-    if (cached) {
+    if (cached && !cacheError) {
       console.log('Cache HIT untuk store', storeId, 'address', addressId);
       const shippingCost = await calculateShippingCost(cached.distance_meters, storeId);
       
@@ -74,7 +75,8 @@ export default async function handler(req, res) {
         distanceKm: cached.distance_meters / 1000,
         durationSeconds: cached.duration_seconds,
         durationMinutes: Math.round(cached.duration_seconds / 60),
-        shippingCost: shippingCost
+        shippingCost: shippingCost,
+        polyline: cached.polyline || null
       });
     }
     
@@ -110,7 +112,7 @@ export default async function handler(req, res) {
     
     const googleUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
     
-    console.log('Calling Google Maps API...');
+    console.log('Calling Google Maps Directions API...');
     const googleRes = await fetch(googleUrl);
     const googleData = await googleRes.json();
     
@@ -123,9 +125,11 @@ export default async function handler(req, res) {
       });
     }
     
-    const route = googleData.routes[0].legs[0];
-    const distanceMeters = route.distance.value;
-    const durationSeconds = route.duration.value;
+    const route = googleData.routes[0];
+    const leg = route.legs[0];
+    const distanceMeters = leg.distance.value;
+    const durationSeconds = leg.duration.value;
+    const polyline = route.overview_polyline.points; // Encoded polyline dari Google
     
     console.log(`Distance: ${distanceMeters}m, Duration: ${durationSeconds}s`);
     
@@ -137,6 +141,7 @@ export default async function handler(req, res) {
         address_id: addressId,
         distance_meters: distanceMeters,
         duration_seconds: durationSeconds,
+        polyline: polyline,
         last_calculated_at: new Date().toISOString()
       }, {
         onConflict: 'store_id, address_id'
@@ -158,6 +163,7 @@ export default async function handler(req, res) {
       durationSeconds: durationSeconds,
       durationMinutes: Math.round(durationSeconds / 60),
       shippingCost: shippingCost,
+      polyline: polyline,
       originAddress: store.name,
       destinationAddress: address.address_text
     });

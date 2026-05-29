@@ -7,6 +7,7 @@ import AddressPicker from '../components/AddressPicker';
 import { getCart, getCartSubtotal } from '../services/cartService';
 import { getStoreShippingSettings, getStoreCoordinates, haversineDistance, calculateShippingCost } from '../services/shippingService';
 import { createOrder } from '../services/orderService';
+import { getShippingCostWithCache } from '../services/shippingService';
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState({ store_id: null, items: [] });
@@ -23,6 +24,9 @@ export default function CheckoutPage() {
   const [saveAddressChecked, setSaveAddressChecked] = useState(false);
   const [isShippingCalculated, setIsShippingCalculated] = useState(false);
   const navigate = useNavigate();
+  const [shippingDistance, setShippingDistance] = useState(0);
+  const [shippingDuration, setShippingDuration] = useState(0);
+const [store, setStore] = useState(null);
 
   useEffect(() => {
     const cartData = getCart();
@@ -35,70 +39,100 @@ export default function CheckoutPage() {
   }, []);
 
   const fetchUserAndData = async (storeId) => {
-    setLoading(true);
+  setLoading(true);
+  
+  // Ambil setting ongkir store
+  const settings = await getStoreShippingSettings(storeId);
+  setShippingSettings(settings);
+  
+  // Ambil koordinat store
+  const coords = await getStoreCoordinates(storeId);
+  setStoreCoords(coords);
+  
+  // Ambil info store (untuk store.id)
+  const { data: storeData } = await supabase
+    .from('stores')
+    .select('id, name')
+    .eq('id', storeId)
+    .single();
+  setStore(storeData);
+  
+  // Cek user login
+  const { data: { user } } = await supabase.auth.getUser();
+  setUser(user);
+  
+  // Ambil alamat member jika login
+  if (user) {
+    const { data: addrs } = await supabase
+      .from('member_addresses')
+      .select('*')
+      .eq('member_id', user.id)
+      .order('is_default', { ascending: false });
+    setAddresses(addrs || []);
     
-    const settings = await getStoreShippingSettings(storeId);
-    setShippingSettings(settings);
-    
-    const coords = await getStoreCoordinates(storeId);
-    setStoreCoords(coords);
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    setUser(user);
-    
-    if (user) {
-      const { data: addrs } = await supabase
-        .from('member_addresses')
-        .select('*')
-        .eq('member_id', user.id)
-        .order('is_default', { ascending: false });
-      setAddresses(addrs || []);
-      // Biarkan selectedAddressId kosong, user harus memilih dari dropdown
+    if (addrs && addrs.length > 0) {
+      const defaultAddr = addrs.find(a => a.is_default) || addrs[0];
+      setSelectedAddressId(defaultAddr.id);
+      
+      // Hitung ongkir setelah storeCoords dan alamat siap
+      if (defaultAddr.latitude && defaultAddr.longitude && coords) {
+        await calculateShipping(defaultAddr.latitude, defaultAddr.longitude, defaultAddr.id);
+      }
     }
-    setLoading(false);
-  };
+  }
+  setLoading(false);
+};
 
-  const calculateShipping = async (lat, lng) => {
-    if (!storeCoords || !storeCoords.lat || !storeCoords.lng) {
-      return 0;
-    }
-    if (!lat || !lng) {
-      return 0;
-    }
-    const distance = haversineDistance(storeCoords.lat, storeCoords.lng, lat, lng);
-    const cost = calculateShippingCost(distance, shippingSettings);
-    setShippingCost(cost);
-    setIsShippingCalculated(true);
-    return cost;
-  };
-
-  const handleAddressSelect = async (addressId) => {
-    if (!addressId) {
-      setSelectedAddressId('');
-      setShippingCost(0);
-      setIsShippingCalculated(false);
+  const calculateShipping = async (lat, lng, addressId) => {
+  // Gunakan store dari state, bukan parameter
+  if (!storeCoords || !store) return;
+  
+  // Gunakan API jika ada addressId (untuk member yang punya alamat tersimpan)
+  if (addressId) {
+    const result = await getShippingCostWithCache(store.id, addressId);
+    if (result) {
+      setShippingCost(result.cost);
+      setShippingDistance(result.distanceKm);
+      setShippingDuration(result.durationMinutes);
+      setIsShippingCalculated(true);
       return;
     }
-    setSelectedAddressId(addressId);
-    const addr = addresses.find(a => a.id === addressId);
-    if (addr && addr.latitude && addr.longitude && storeCoords) {
-      await calculateShipping(addr.latitude, addr.longitude);
-    } else {
-      alert('Alamat ini belum memiliki koordinat. Silakan edit alamat dan tambahkan lokasi di peta.');
-      setSelectedAddressId('');
-      setIsShippingCalculated(false);
-    }
-  };
+  }
+  
+  // Fallback: hitung manual dengan Haversine (untuk guest atau jika API gagal)
+  const distance = haversineDistance(storeCoords.lat, storeCoords.lng, lat, lng);
+  const cost = calculateShippingCost(distance, shippingSettings);
+  setShippingCost(cost);
+  setShippingDistance(distance);
+  setShippingDuration(Math.round(distance * 2));
+  setIsShippingCalculated(true);
+};
+
+  const handleAddressSelect = async (addressId) => {
+  if (!addressId) {
+    setSelectedAddressId('');
+    setShippingCost(0);
+    setShippingDistance(0);
+    setIsShippingCalculated(false);
+    return;
+  }
+  setSelectedAddressId(addressId);
+  const addr = addresses.find(a => a.id === addressId);
+  if (addr && addr.latitude && addr.longitude && storeCoords) {
+    await calculateShipping(addr.latitude, addr.longitude, addressId);
+  }
+};
 
   const handleGuestAddressChange = async (location) => {
-    setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
-    if (location.lat && location.lng && storeCoords) {
-      await calculateShipping(location.lat, location.lng);
-    } else {
-      setIsShippingCalculated(false);
-      setShippingCost(0);
-    }
-  };
+  setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
+  if (location.lat && location.lng && storeCoords) {
+    await calculateShipping(location.lat, location.lng, null);
+  } else {
+    setIsShippingCalculated(false);
+    setShippingCost(0);
+    setShippingDistance(0);
+  }
+};
 
   const handleSubmit = async () => {
     if (!isFormValid()) {
@@ -263,6 +297,15 @@ export default function CheckoutPage() {
                   <span>Rp {(item.discounted_price * item.quantity).toLocaleString()}</span>
                 </div>
               ))}
+
+              <div className="flex justify-between text-sm">
+  <span>Jarak (Estimasi)</span>
+  <span>{shippingDistance > 0 ? `${shippingDistance.toFixed(1)} km` : 'Menghitung...'}</span>
+</div>
+<div className="flex justify-between text-sm">
+  <span>Estimasi Waktu</span>
+  <span>{shippingDuration > 0 ? `${shippingDuration} menit` : '-'}</span>
+</div>
               <div className="flex justify-between border-t border-white/10 pt-2">
                 <span>Subtotal</span>
                 <span>Rp {subtotal.toLocaleString()}</span>

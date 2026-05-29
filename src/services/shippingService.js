@@ -35,11 +35,9 @@ export async function getStoreShippingSettings(storeId) {
 
 // Update setting ongkir store
 export async function updateStoreShippingSettings(storeId, baseCost, costPerKm) {
-  // Cek apakah sudah ada
   const existing = await getStoreShippingSettings(storeId)
   
   if (existing.id) {
-    // Update
     const { error } = await supabase
       .from('store_settings')
       .update({ 
@@ -50,7 +48,6 @@ export async function updateStoreShippingSettings(storeId, baseCost, costPerKm) 
       .eq('store_id', storeId)
     if (error) throw error
   } else {
-    // Insert baru
     const { error } = await supabase
       .from('store_settings')
       .insert([{ 
@@ -74,10 +71,10 @@ export async function getStoreCoordinates(storeId) {
   return { lat: data.latitude, lng: data.longitude }
 }
 
-// ========== TAMBAHKAN DI AKHIR FILE shippingService.js ==========
+// ========== FUNGSI UNTUK DIRECTIONS API (DENGAN POLYLINE) ==========
 
 /**
- * Hitung jarak menggunakan Google Maps API dengan caching
+ * Hitung jarak menggunakan Google Maps Directions API dengan caching
  * (via API route Vercel)
  */
 export async function calculateDistanceWithCache(storeId, addressId) {
@@ -112,12 +109,13 @@ export async function getShippingCostWithCache(storeId, addressId) {
       cost: result.shippingCost,
       distanceKm: result.distanceKm,
       durationMinutes: result.durationMinutes,
+      polyline: result.polyline,
       cached: result.cached,
       source: 'google_maps'
     };
   }
   
-  // 2. Fallback ke Haversine calculation (yang sudah ada)
+  // 2. Fallback ke Haversine calculation
   console.log('Falling back to Haversine calculation');
   try {
     const storeCoords = await getStoreCoordinates(storeId);
@@ -134,7 +132,8 @@ export async function getShippingCostWithCache(storeId, addressId) {
       return {
         cost: cost,
         distanceKm: distance,
-        durationMinutes: Math.round(distance * 2), // estimasi kasar
+        durationMinutes: Math.round(distance * 2),
+        polyline: null,
         cached: false,
         source: 'haversine'
       };
@@ -158,4 +157,55 @@ async function getAddressCoordinates(addressId) {
   
   if (error || !data) return null;
   return { lat: data.latitude, lng: data.longitude };
+}
+
+/**
+ * Ambil polyline dari cache untuk ditampilkan di peta tracking
+ */
+export async function getRoutePolyline(storeId, addressId) {
+  const { data, error } = await supabase
+    .from('distance_cache')
+    .select('polyline')
+    .eq('store_id', storeId)
+    .eq('address_id', addressId)
+    .maybeSingle();
+  
+  if (error || !data?.polyline) return null;
+  return data.polyline;
+}
+
+/**
+ * Decode Google Maps encoded polyline menjadi array koordinat
+ * untuk ditampilkan di Leaflet
+ */
+export function decodePolyline(encoded) {
+  if (!encoded) return [];
+  
+  let points = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+  
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+    
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+    
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
 }
