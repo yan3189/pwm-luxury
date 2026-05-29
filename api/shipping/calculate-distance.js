@@ -40,7 +40,10 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  console.log('Request method:', req.method);
+  console.log('Request body:', req.body);
   
+
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -173,9 +176,27 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 }
-export default async function handler(req, res) {
-  console.log('Request method:', req.method);
-  console.log('Request body:', req.body);
-  
-  // ... kode selanjutnya
+// ...
+try {
+  const googleRes = await fetch(googleUrl);
+  const googleData = await googleRes.json();
+
+  if (googleData.status !== 'OK') {
+    console.error('Google Maps API error:', googleData.status, googleData.error_message);
+    // Jangan langsung return error, tapi kirim response dengan status 200
+    // dan flag 'success: false' agar frontend bisa fallback ke Haversine.
+    return res.status(200).json({
+      success: false,
+      error: `Google Maps API error: ${googleData.status}`,
+      message: googleData.error_message
+    });
+  }
+  // ... proses selanjutnya
+} catch (error) {
+    console.error('Error calling Google Maps API:', error);
+    return res.status(200).json({
+      success: false,
+      error: error.message
+    });
 }
+// ...
