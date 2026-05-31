@@ -29,7 +29,7 @@ export default function AdminOrderDetail() {
   const [courier, setCourier] = useState(null);
   const [courierHeading, setCourierHeading] = useState(0);
   const [routePolyline, setRoutePolyline] = useState([]);
-  const [isTrackingActive, setIsTrackingActive] = useState(false);
+  const [isTrackingActive, setIsTrackingActive] = useState(null);
   const animationRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -243,47 +243,102 @@ export default function AdminOrderDetail() {
     setUpdating(false);
   };
 
-  // Realtime subscription
-  useEffect(() => {
-    if (!delivery || !delivery.id) return;
-    
-    const channel = supabase
-      .channel(`tracking:${delivery.id}`)
-      .on('broadcast', { event: 'location-update' }, (payload) => {
-        const { lat, lng, heading } = payload.payload;
+  // ========== REALTIME SUBSCRIPTION ==========
+useEffect(() => {
+  if (!delivery || !delivery.id) {
+    console.log('No delivery assignment, skipping realtime subscription');
+    return;
+  }
+  
+  console.log('Setting up realtime subscription for delivery:', delivery.id);
+  
+  let lastUpdateTime = Date.now();
+  let statusCheckInterval = null;
+  let isMounted = true;
+  
+  const channel = supabase
+    .channel(`tracking:${delivery.id}`)
+    .on('broadcast', { event: 'location-update' }, (payload) => {
+      if (!isMounted) return;
+      
+      const { lat, lng, heading } = payload.payload;
+      console.log('📍 Location update received:', { lat, lng, heading });
+      
+      lastUpdateTime = Date.now();
+      
+      if (isTrackingActive === 'timeout') {
+        setIsTrackingActive(true);
+      }
+      
+      if (heading !== undefined) setCourierHeading(heading);
+      
+      if (courierLocation && courierLocation[0] && courierLocation[1]) {
+        const startLat = courierLocation[0];
+        const startLng = courierLocation[1];
+        const endLat = lat;
+        const endLng = lng;
+        const startTime = Date.now();
+        const duration = 2000;
         
-        if (heading !== undefined) setCourierHeading(heading);
+        if (animationRef.current) cancelAnimationFrame(animationRef.current);
         
-        if (courierLocation) {
-          const startLat = courierLocation[0];
-          const startLng = courierLocation[1];
-          const startTime = Date.now();
-          const duration = 2000;
-          
-          if (animationRef.current) cancelAnimationFrame(animationRef.current);
-          
-          function animate() {
-            const elapsed = Date.now() - startTime;
-            const t = Math.min(1, elapsed / duration);
-            setCourierLocation([startLat + (lat - startLat) * t, startLng + (lng - startLng) * t]);
-            if (t < 1) animationRef.current = requestAnimationFrame(animate);
-            else animationRef.current = null;
+        function animate() {
+          if (!isMounted) return;
+          const elapsed = Date.now() - startTime;
+          const t = Math.min(1, elapsed / duration);
+          setCourierLocation([startLat + (endLat - startLat) * t, startLng + (endLng - startLng) * t]);
+          if (t < 1) {
+            animationRef.current = requestAnimationFrame(animate);
+          } else {
+            animationRef.current = null;
           }
-          animate();
-        } else {
-          setCourierLocation([lat, lng]);
         }
-        
-        if (mapRef.current && lat && lng) mapRef.current.setView([lat, lng], 14);
-      })
-      .subscribe();
+        animate();
+      } else {
+        setCourierLocation([lat, lng]);
+      }
+      
+      if (mapRef.current && lat && lng) {
+        mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
+      }
+    })
+    .on('broadcast', { event: 'tracking-status' }, (payload) => {
+      if (!isMounted) return;
+      
+      const { status } = payload.payload;
+      console.log('Tracking status update:', status);
+      
+      if (status === 'active') {
+        setIsTrackingActive(true);
+        lastUpdateTime = Date.now();
+      } else if (status === 'inactive') {
+        setIsTrackingActive(false);
+      }
+    })
+    .subscribe((status) => {
+      console.log('Realtime subscription status:', status);
+    });
+  
+  // Timeout detection
+  statusCheckInterval = setInterval(() => {
+    if (!isMounted) return;
     
-    setIsTrackingActive(true);
-    return () => {
-      supabase.removeChannel(channel);
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [delivery, courierLocation]);
+    if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
+      console.log('No location update for 30 seconds, marking tracking as timeout');
+      setIsTrackingActive('timeout');
+    }
+  }, 10000);
+  
+  setIsTrackingActive(true);
+  
+  return () => {
+    console.log('Cleaning up realtime subscription');
+    isMounted = false;
+    supabase.removeChannel(channel);
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (statusCheckInterval) clearInterval(statusCheckInterval);
+  };
+}, [delivery, courierLocation]);
 
   const getStatusBadge = (status) => {
     const colors = { 
@@ -435,18 +490,42 @@ export default function AdminOrderDetail() {
           {/* ========== TAB TRACKING ========== */}
           {activeTab === 'map' && (
             <div className="space-y-4">
-              {/* Status Pengiriman */}
-              <div className="bg-gray-800/50 rounded-lg p-4">
-                <h3 className="font-semibold flex items-center gap-2 mb-3"><Truck size={18} className="text-yellow-500" /> Status Pengiriman</h3>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-sm">Status: <span className="font-bold uppercase text-yellow-500">{delivery?.status}</span></p>
-                    {courier && <p className="text-sm text-gray-400">Kurir: {courier.full_name || courier.email}</p>}
-                    {delivery?.started_at && <p className="text-xs text-gray-500">Mulai: {new Date(delivery.started_at).toLocaleString()}</p>}
-                  </div>
-                  {isTrackingActive && <div className="flex items-center gap-1 text-green-500 text-xs"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>Live Tracking Aktif</div>}
-                </div>
-              </div>
+             {/* Status Pengiriman */}
+<div className="bg-gray-800/50 rounded-lg p-4">
+  <h3 className="font-semibold flex items-center gap-2 mb-3">
+    <Truck size={18} className="text-yellow-500" />
+    Status Pengiriman
+  </h3>
+  <div className="flex justify-between items-center flex-wrap gap-2">
+    <div>
+      <p className="text-sm">Status: <span className="font-bold uppercase text-yellow-500">{delivery?.status || 'assigned'}</span></p>
+      {courier && <p className="text-sm text-gray-400">Kurir: {courier.full_name || courier.email}</p>}
+      {delivery?.started_at && <p className="text-xs text-gray-500">Mulai: {new Date(delivery.started_at).toLocaleString()}</p>}
+    </div>
+    
+    {/* Tracking Status dengan 3 kondisi */}
+    {isTrackingActive === true && (
+      <div className="flex items-center gap-1 text-green-500 text-xs bg-green-500/10 px-2 py-1 rounded-full">
+        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+        Live Tracking Aktif
+      </div>
+    )}
+    
+    {isTrackingActive === false && (
+      <div className="flex items-center gap-1 text-red-500 text-xs bg-red-500/10 px-2 py-1 rounded-full">
+        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+        Live Tracking Tidak Aktif
+      </div>
+    )}
+    
+    {isTrackingActive === 'timeout' && (
+      <div className="flex items-center gap-1 text-yellow-500 text-xs bg-yellow-500/10 px-2 py-1 rounded-full">
+        <span className="text-sm">⚠️</span>
+        Live Tracking Terputus
+      </div>
+    )}
+  </div>
+</div>
 
               {/* Peta Tracking */}
               <TrackingMap

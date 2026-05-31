@@ -169,6 +169,19 @@ export default function CourierDashboard() {
     
     setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: id, active: true } }));
     
+// Broadcast status aktif ke konsumen
+  try {
+    const statusChannel = supabase.channel(`tracking:${deliveryId}`);
+    await statusChannel.send({
+      type: 'broadcast',
+      event: 'tracking-status',
+      payload: { status: 'active' }
+    });
+    console.log('📡 Tracking status broadcast: active');
+  } catch (err) {
+    console.error('Failed to broadcast tracking status:', err);
+  }
+
     if (delivery.status === 'assigned') {
       await updateDeliveryStatus(deliveryId, 'picking_up');
     }
@@ -179,6 +192,21 @@ export default function CourierDashboard() {
     if (state?.watchId) {
       navigator.geolocation.clearWatch(state.watchId);
       setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: null, active: false } }));
+
+      // Broadcast status tidak aktif ke konsumen
+    (async () => {
+      try {
+        const statusChannel = supabase.channel(`tracking:${deliveryId}`);
+        await statusChannel.send({
+          type: 'broadcast',
+          event: 'tracking-status',
+          payload: { status: 'inactive' }
+        });
+        console.log('📡 Tracking status broadcast: inactive');
+      } catch (err) {
+        console.error('Failed to broadcast tracking status:', err);
+      }
+    })();
     }
   };
   
