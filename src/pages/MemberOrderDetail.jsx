@@ -5,7 +5,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import { ArrowLeft, MapPin, Calendar, Package, Upload, CheckCircle, AlertCircle, Download, Map, Truck } from 'lucide-react';
-
+import TrackingMap from '../components/TrackingMap';
 // ========== IMPORTS UNTUK LEAFLET ==========
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
@@ -40,6 +40,7 @@ export default function MemberOrderDetail() {
   const animationRef = useRef(null);
   const mapRef = useRef(null);
   const [routePolyline, setRoutePolyline] = useState([]);
+const [courierHeading, setCourierHeading] = useState(0);
 
 function decodePolyline(encoded) {
   if (!encoded) return [];
@@ -71,129 +72,131 @@ function decodePolyline(encoded) {
     console.log('===== FETCHING ORDER DETAIL =====');
     console.log('Order ID:', id);
     
-    // Step 1: Ambil order
-    const { data: orderData, error: orderError } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-    
-    if (orderError || !orderData) {
-      console.error('Order error:', orderError);
-      setLoading(false);
-      return;
-    }
-    
-    console.log('Order data retrieved:', {
-      id: orderData.id,
-      order_number: orderData.order_number,
-      delivery_type: orderData.delivery_type,
-      status: orderData.status,
-      shipping_latitude: orderData.shipping_latitude,
-      shipping_longitude: orderData.shipping_longitude
-    });
-    
-    setOrder(orderData);
-    
-    // Step 2: Ambil store (query sederhana, tanpa nested select)
+// ========== DI DALAM FUNGSI fetchOrder ==========
+
+// 1. Ambil order
+const { data: orderData, error: orderError } = await supabase
+  .from('orders')
+  .select('*')
+  .eq('id', id)
+  .maybeSingle();
+
+if (orderError || !orderData) {
+  console.error('Order error:', orderError);
+  setLoading(false);
+  return;
+}
+setOrder(orderData);
+
+// 2. Ambil store (DEKLARASIKAN storeData di sini)
+let storeData = null;
 if (orderData.store_id) {
-  console.log('Fetching store with ID:', orderData.store_id);
-  const { data: storeData, error: storeError } = await supabase
+  const { data: sd, error: storeError } = await supabase
     .from('stores')
-    .select('*')  // SELECT SEMUA KOLOM, tanpa nested
+    .select('*')
     .eq('id', orderData.store_id)
     .single();
   
-  if (storeError) {
-    console.error('Error fetching store:', storeError);
-  } else {
-    console.log('Store data retrieved:', {
-      name: storeData.name,
-      latitude: storeData.latitude,
-      longitude: storeData.longitude
-    });
+  if (!storeError && sd) {
+    storeData = sd;
     setStore(storeData);
   }
 }
-// Ambil polyline dari cache
-if (store && order && order.shipping_latitude && order.shipping_longitude) {
-  // Coba cari address_id (jika ada)
-  const addressId = order.address_id;
+
+// 3. Ambil items
+const { data: itemsData } = await supabase
+  .from('order_items')
+  .select('*')
+  .eq('order_id', id);
+setItems(itemsData || []);
+
+// 4. Ambil alamat
+if (orderData.address_id) {
+  const { data: addressData } = await supabase
+    .from('member_addresses')
+    .select('*')
+    .eq('id', orderData.address_id)
+    .single();
+  if (addressData) setAddress(addressData);
+}
+
+// 5. Ambil delivery assignment & tracking
+if (orderData.delivery_type === 'internal') {
+  const { data: deliveryData, error: deliveryError } = await supabase
+    .from('delivery_assignments')
+    .select('*, courier:users(id, email, full_name)')
+    .eq('order_id', id)
+    .maybeSingle();
+  
+  if (deliveryError) {
+    console.error('Error fetching delivery assignment:', deliveryError);
+  }
+  
+  if (deliveryData) {
+    setDelivery(deliveryData);
+    if (deliveryData.courier) setCourier(deliveryData.courier);
+    
+    const { data: points } = await supabase
+      .from('tracking_points')
+      .select('*')
+      .eq('delivery_id', deliveryData.id)
+      .order('recorded_at', { ascending: false })
+      .limit(1);
+    
+    if (points && points[0]) {
+      setCourierLocation([points[0].latitude, points[0].longitude]);
+    }
+  }
+}
+
+// ========== KODE POLYLINE (GUNAKAN storeData dan orderData) ==========
+console.log('🔍 DEBUG: Memeriksa kondisi untuk mengambil polyline');
+console.log('storeData:', storeData?.id);
+console.log('orderData?.shipping_latitude:', orderData?.shipping_latitude);
+console.log('orderData?.address_id:', orderData?.address_id);
+
+if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+  let addressId = orderData.address_id;
+  
+  if (!addressId && orderData.shipping_address) {
+    console.log('Tidak ada address_id, mencoba mencari berdasarkan shipping_address:', orderData.shipping_address);
+    const { data: addrData } = await supabase
+      .from('member_addresses')
+      .select('id')
+      .eq('address_text', orderData.shipping_address)
+      .maybeSingle();
+    if (addrData) addressId = addrData.id;
+  }
+  
   if (addressId) {
-    const { data: cacheData } = await supabase
+    console.log('Mengambil polyline untuk store:', storeData.id, 'address:', addressId);
+    const { data: cacheData, error: cacheError } = await supabase
       .from('distance_cache')
       .select('polyline')
-      .eq('store_id', store.id)
+      .eq('store_id', storeData.id)
       .eq('address_id', addressId)
       .maybeSingle();
     
+    if (cacheError) {
+      console.error('Error mengambil polyline:', cacheError);
+    }
+    
     if (cacheData?.polyline) {
-      const decoded = decodePolyline(cacheData.polyline);
-      setRoutePolyline(decoded);
-    }
-  }
-}    
-
-    // Step 3: Ambil items
-    const { data: itemsData } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', id);
-    setItems(itemsData || []);
-    
-    // Step 4: Ambil alamat
-    if (orderData.address_id) {
-      const { data: addressData } = await supabase
-        .from('member_addresses')
-        .select('*')
-        .eq('id', orderData.address_id)
-        .single();
-      if (addressData) setAddress(addressData);
-    }
-    
-    // Step 5: Ambil delivery assignment & tracking
-    if (orderData.delivery_type === 'internal') {
-      console.log('Order has internal delivery, fetching delivery_assignments...');
-      const { data: deliveryData, error: deliveryError } = await supabase
-        .from('delivery_assignments')
-        .select('*, courier:users(id, email, full_name)')
-        .eq('order_id', id)
-        .maybeSingle();
-      
-      if (deliveryError) {
-        console.error('Error fetching delivery assignment:', deliveryError);
-      }
-      
-      if (deliveryData) {
-        console.log('Delivery assignment found:', {
-          id: deliveryData.id,
-          status: deliveryData.status,
-          courier: deliveryData.courier?.full_name || deliveryData.courier?.email
-        });
-        setDelivery(deliveryData);
-        if (deliveryData.courier) setCourier(deliveryData.courier);
-        
-        // Ambil tracking points terbaru
-        const { data: points } = await supabase
-          .from('tracking_points')
-          .select('*')
-          .eq('delivery_id', deliveryData.id)
-          .order('recorded_at', { ascending: false })
-          .limit(1);
-        
-        if (points && points[0]) {
-          console.log('Latest tracking point:', points[0]);
-          setCourierLocation([points[0].latitude, points[0].longitude]);
-        }
-      } else {
-        console.log('No delivery assignment found for this order');
-      }
+      console.log('✅ Polyline ditemukan, panjang:', cacheData.polyline.length);
+      setRoutePolyline(cacheData.polyline);
     } else {
-      console.log('Order delivery_type is not internal:', orderData.delivery_type);
+      console.log('❌ Polyline tidak ditemukan di cache untuk kombinasi ini');
     }
-    
-    setLoading(false);
-    console.log('===== FETCH COMPLETE =====');
+  } else {
+    console.log('❌ Tidak ada address_id yang valid');
+  }
+} else {
+  console.log('❌ Kondisi tidak terpenuhi: storeData atau orderData koordinat tidak lengkap');
+}
+
+// 6. Selesai
+setLoading(false);
+console.log('===== FETCH COMPLETE =====');
   };
 
   // ========== REALTIME SUBSCRIPTION ==========
@@ -210,7 +213,8 @@ if (store && order && order.shipping_latitude && order.shipping_longitude) {
       .on('broadcast', { event: 'location-update' }, (payload) => {
         const { lat, lng, heading, timestamp } = payload.payload;
         console.log('📍 Location update received:', { lat, lng, heading, timestamp });
-        
+        if (heading !== undefined) {
+      setCourierHeading(heading);}
         // Animasi smooth movement
         if (courierLocation) {
           const startLat = courierLocation[0];
@@ -487,70 +491,17 @@ const showTrackingTab = delivery &&
                 </div>
               </div>
 
-              {/* Peta */}
-<div className="bg-gray-800/50 rounded-lg overflow-hidden" style={{ height: '500px' }}>
-  {(store?.latitude || order?.shipping_latitude) ? (
-    <MapContainer
-      center={courierLocation || [store?.latitude || -6.2, store?.longitude || 106.816]}
-      zoom={13}
-      style={{ height: '100%', width: '100%' }}
-      whenCreated={(map) => { mapRef.current = map; }}
-    >
-      {/* Route Polyline dari Directions API */}
-{routePolyline && routePolyline.length > 0 && (
-  <Polyline
-    positions={routePolyline}
-    color="#2563EB"
-    weight={4}
-    opacity={0.8}
-  />
-)}
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'
-      />
-      
-      {/* Store Marker */}
-      {store?.latitude && store?.longitude && (
-        <Marker position={[store.latitude, store.longitude]}>
-          <Popup>📍 Store: {store.name}</Popup>
-        </Marker>
-      )}
-      
-      {/* Destination Marker */}
-      {order?.shipping_latitude && order?.shipping_longitude && (
-        <Marker position={[order.shipping_latitude, order.shipping_longitude]}>
-          <Popup>🏠 Tujuan: {order.shipping_address}</Popup>
-        </Marker>
-      )}
-      
-      {/* Courier Marker */}
-      {courierLocation && (
-        <Marker position={courierLocation}>
-          <Popup>🛵 Kurir sedang dalam perjalanan</Popup>
-        </Marker>
-      )}
-      
-      {/* Route Line */}
-      {courierLocation && order?.shipping_latitude && order?.shipping_longitude && (
-        <Polyline
-          positions={[courierLocation, [order.shipping_latitude, order.shipping_longitude]]}
-          color="#F59E0B"
-          weight={3}
-          opacity={0.7}
-          dashArray="5, 10"
-        />
-      )}
-    </MapContainer>
-  ) : (
-    <div className="h-full flex items-center justify-center text-gray-400">
-      <div className="text-center">
-        <p>Koordinat tidak tersedia</p>
-        <p className="text-xs mt-2">Pastikan store dan alamat pengiriman memiliki koordinat</p>
-      </div>
-    </div>
-  )}
-</div>
+            
+{/* Peta */}
+<TrackingMap
+  storeLocation={store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null}
+  destination={order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null}
+  courierLocation={courierLocation}
+  polyline={routePolyline}
+  courierHeading={courierHeading}
+  storeName={store?.name}
+  destinationAddress={order?.shipping_address}
+/>
 
               {/* Informasi Tracking */}
               {delivery && (

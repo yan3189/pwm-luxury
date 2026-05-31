@@ -15,6 +15,7 @@ import {
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import TrackingMap from '../components/TrackingMap';
 
 // Fix untuk marker icon Leaflet di Vite
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -184,6 +185,56 @@ if (store && order && order.shipping_latitude && order.shipping_longitude) {
       }
     }
     
+// ========== AMBIL POLYLINE DARI CACHE (GUNAKAN VARIABEL LOKAL) ==========
+console.log('🔍 DEBUG: Memeriksa kondisi untuk mengambil polyline');
+console.log('storeData:', storeData?.id);
+console.log('orderData?.shipping_latitude:', orderData?.shipping_latitude);
+console.log('orderData?.address_id:', orderData?.address_id);
+
+if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+  // Coba cari address_id dari order, atau gunakan shipping_address sebagai fallback
+  let addressId = orderData.address_id;
+  
+  // Jika tidak ada address_id, coba cari di member_addresses berdasarkan alamat teks
+  if (!addressId && orderData.shipping_address) {
+    console.log('Tidak ada address_id, mencoba mencari berdasarkan shipping_address:', orderData.shipping_address);
+    const { data: addrData } = await supabase
+      .from('member_addresses')
+      .select('id')
+      .eq('address_text', orderData.shipping_address)
+      .maybeSingle();
+    if (addrData) addressId = addrData.id;
+  }
+  
+  if (addressId) {
+    console.log('Mengambil polyline untuk store:', storeData.id, 'address:', addressId);
+    const { data: cacheData, error: cacheError } = await supabase
+      .from('distance_cache')
+      .select('polyline')
+      .eq('store_id', storeData.id)
+      .eq('address_id', addressId)
+      .maybeSingle();
+    
+    if (cacheError) {
+      console.error('Error mengambil polyline:', cacheError);
+    }
+    
+    if (cacheData?.polyline) {
+      console.log('✅ Polyline ditemukan, panjang:', cacheData.polyline.length);
+      setRoutePolyline(cacheData.polyline);
+    } else {
+      console.log('❌ Polyline tidak ditemukan di cache untuk kombinasi ini');
+    }
+  } else {
+    console.log('❌ Tidak ada address_id yang valid');
+  }
+} else {
+  console.log('❌ Kondisi tidak terpenuhi: storeData atau orderData koordinat tidak lengkap');
+  console.log('storeData?.id:', storeData?.id);
+  console.log('orderData?.shipping_latitude:', orderData?.shipping_latitude);
+  console.log('orderData?.shipping_longitude:', orderData?.shipping_longitude);
+}
+
     setLoading(false);
   };
 
@@ -500,79 +551,16 @@ if (store && order && order.shipping_latitude && order.shipping_longitude) {
                 </div>
               </div>
 
-              {/* Peta */}
-              {hasValidCoordinates ? (
-                <div className="bg-gray-800/50 rounded-lg overflow-hidden" style={{ height: '500px' }}>
-                  <MapContainer
-                    center={courierLocation || storeLocation || destination || [-6.200000, 106.816666]}
-                    zoom={13}
-                    style={{ height: '100%', width: '100%' }}
-                    whenCreated={(map) => { mapRef.current = map; }}
-                  >
-                    {/* Route Polyline dari Directions API */}
-{routePolyline && routePolyline.length > 0 && (
-  <Polyline
-    positions={routePolyline}
-    color="#2563EB"
-    weight={4}
-    opacity={0.8}
-  />
-)}
-                    <TileLayer
-                      url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB'
-                    />
-                    
-                    {/* Store Marker */}
-                    {storeLocation && (
-                      <Marker position={storeLocation} icon={storeIcon}>
-                        <Popup>📍 Store: {store?.name}</Popup>
-                      </Marker>
-                    )}
-                    
-                    {/* Destination Marker */}
-                    {destination && (
-                      <Marker position={destination} icon={destIcon}>
-                        <Popup>🏠 Tujuan: {order.shipping_address}</Popup>
-                      </Marker>
-                    )}
-                    
-                    {/* Courier Marker */}
-                    {courierLocation && (
-                      <Marker position={courierLocation} icon={courierIcon}>
-                        <Popup>🛵 Kurir sedang dalam perjalanan</Popup>
-                      </Marker>
-                    )}
-                    
-                    {/* Route Line from Courier to Destination */}
-                    {courierLocation && destination && (
-                      <Polyline
-                        positions={[courierLocation, destination]}
-                        color="#F59E0B"
-                        weight={3}
-                        opacity={0.7}
-                        dashArray="5, 10"
-                      />
-                    )}
-                    
-                    {/* Route Line from Store to Destination (if courier not started) */}
-                    {!courierLocation && storeLocation && destination && (
-                      <Polyline
-                        positions={[storeLocation, destination]}
-                        color="#6B7280"
-                        weight={2}
-                        opacity={0.4}
-                      />
-                    )}
-                  </MapContainer>
-                </div>
-              ) : (
-                <div className="bg-gray-800/50 rounded-lg p-8 text-center">
-                  <Globe size={48} className="mx-auto text-gray-500 mb-3" />
-                  <p className="text-gray-400">Lokasi pengiriman belum tersedia</p>
-                  <p className="text-xs text-gray-500 mt-2">Pesanan akan segera diproses oleh kurir</p>
-                </div>
-              )}
+{/* Peta */}
+<TrackingMap
+  storeLocation={storeLocation}
+  destination={destination}
+  courierLocation={courierLocation}
+  polyline={routePolyline}
+  courierHeading={courierHeading}
+  storeName={store?.name}
+  destinationAddress={order?.shipping_address}
+/>
 
               {/* Tracking Info */}
               {delivery && (
