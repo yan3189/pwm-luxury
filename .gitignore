@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 "api api.txt" 
 "*.txt" 
+.vercel
+.env*

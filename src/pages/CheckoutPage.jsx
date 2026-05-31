@@ -5,9 +5,8 @@ import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import AddressPicker from '../components/AddressPicker';
 import { getCart, getCartSubtotal } from '../services/cartService';
-import { getStoreShippingSettings, getStoreCoordinates, haversineDistance, calculateShippingCost } from '../services/shippingService';
+import { getStoreShippingSettings, getStoreCoordinates, haversineDistance, calculateShippingCost, getShippingCostWithCache } from '../services/shippingService';
 import { createOrder } from '../services/orderService';
-import { getShippingCostWithCache } from '../services/shippingService';
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState({ store_id: null, items: [] });
@@ -23,10 +22,10 @@ export default function CheckoutPage() {
   const [notes, setNotes] = useState('');
   const [saveAddressChecked, setSaveAddressChecked] = useState(false);
   const [isShippingCalculated, setIsShippingCalculated] = useState(false);
-  const navigate = useNavigate();
   const [shippingDistance, setShippingDistance] = useState(0);
   const [shippingDuration, setShippingDuration] = useState(0);
-const [store, setStore] = useState(null);
+  const [store, setStore] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const cartData = getCart();
@@ -39,107 +38,88 @@ const [store, setStore] = useState(null);
   }, []);
 
   const fetchUserAndData = async (storeId) => {
-  setLoading(true);
-  
-  // Ambil setting ongkir store
-  const settings = await getStoreShippingSettings(storeId);
-  setShippingSettings(settings);
-  
-  // Ambil koordinat store
-  const coords = await getStoreCoordinates(storeId);
-  setStoreCoords(coords);
-  
-  // Ambil info store (untuk store.id)
-  const { data: storeData } = await supabase
-    .from('stores')
-    .select('id, name')
-    .eq('id', storeId)
-    .single();
-  setStore(storeData);
-  
-  // Cek user login
-  const { data: { user } } = await supabase.auth.getUser();
-  setUser(user);
-  
-  // Ambil alamat member jika login
-  if (user) {
-    const { data: addrs } = await supabase
-      .from('member_addresses')
-      .select('*')
-      .eq('member_id', user.id)
-      .order('is_default', { ascending: false });
-    setAddresses(addrs || []);
-    
-    if (addrs && addrs.length > 0) {
-        setAddresses(addrs || []);
-      //  setSelectedAddressId(defaultAddr.id);
-      
-      // Hitung ongkir setelah storeCoords dan alamat siap
-    //  if (defaultAddr.latitude && defaultAddr.longitude && coords) {
-    //    await calculateShipping(defaultAddr.latitude, defaultAddr.longitude, defaultAddr.id);
-    //  }
+    setLoading(true);
+    const settings = await getStoreShippingSettings(storeId);
+    setShippingSettings(settings);
+    const coords = await getStoreCoordinates(storeId);
+    setStoreCoords(coords);
+    const { data: storeData } = await supabase
+      .from('stores')
+      .select('id, name')
+      .eq('id', storeId)
+      .single();
+    setStore(storeData);
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
+    if (user) {
+      const { data: addrs } = await supabase
+        .from('member_addresses')
+        .select('*')
+        .eq('member_id', user.id)
+        .order('is_default', { ascending: false });
+      setAddresses(addrs || []);
+      // Tidak auto-select alamat
     }
-  }
-  setLoading(false);
-};
+    setLoading(false);
+  };
 
   const calculateShipping = async (lat, lng, addressId) => {
-  // Gunakan store dari state, bukan parameter
-  if (!storeCoords || !store) return;
-  
-  // Gunakan API jika ada addressId (untuk member yang punya alamat tersimpan)
-  if (addressId) {
-    const result = await getShippingCostWithCache(store.id, addressId);
-    if (result) {
-      setShippingCost(result.cost);
-      setShippingDistance(result.distanceKm);
-      setShippingDuration(result.durationMinutes);
-      setIsShippingCalculated(true);
-      return;
+    if (!storeCoords || !store) return;
+    if (addressId) {
+      // <-- TAMBAHAN DEBUG: Log sebelum panggil API
+      console.log('🚀 Memanggil API dengan storeId:', store.id, 'addressId:', addressId);
+      const apiResult = await getShippingCostWithCache(store.id, addressId);
+      console.log('🚀 API Response:', apiResult);
+      if (apiResult && apiResult.success) {
+        setShippingCost(apiResult.cost);
+        setShippingDistance(apiResult.distanceKm);
+        setShippingDuration(apiResult.durationMinutes);
+        setIsShippingCalculated(true);
+        return;
+      } else {
+        console.warn('⚠️ API gagal, fallback ke Haversine');
+      }
     }
-  }
-  
-  // Fallback: hitung manual dengan Haversine (untuk guest atau jika API gagal)
-  const distance = haversineDistance(storeCoords.lat, storeCoords.lng, lat, lng);
-  const cost = calculateShippingCost(distance, shippingSettings);
-  setShippingCost(cost);
-  setShippingDistance(distance);
-  setShippingDuration(Math.round(distance * 2));
-  setIsShippingCalculated(true);
-};
+    // Fallback Haversine
+    const distance = haversineDistance(storeCoords.lat, storeCoords.lng, lat, lng);
+    const cost = calculateShippingCost(distance, shippingSettings);
+    setShippingCost(cost);
+    setShippingDistance(distance);
+    setShippingDuration(Math.round(distance * 2));
+    setIsShippingCalculated(true);
+  };
 
   const handleAddressSelect = async (addressId) => {
-  if (!addressId) {
-    setSelectedAddressId('');
-    setShippingCost(0);
-    setShippingDistance(0);
-    setIsShippingCalculated(false);
-    return;
-  }
-  setSelectedAddressId(addressId);
-  const addr = addresses.find(a => a.id === addressId);
-  if (addr && addr.latitude && addr.longitude && storeCoords) {
-    await calculateShipping(addr.latitude, addr.longitude, addressId);
-  }
-};
+    if (!addressId) {
+      setSelectedAddressId('');
+      setShippingCost(0);
+      setShippingDistance(0);
+      setIsShippingCalculated(false);
+      return;
+    }
+    setSelectedAddressId(addressId);
+    const addr = addresses.find(a => a.id === addressId);
+    if (addr && addr.latitude && addr.longitude && storeCoords) {
+      await calculateShipping(addr.latitude, addr.longitude, addressId);
+    }
+  };
 
   const handleGuestAddressChange = async (location) => {
-  setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
-  if (location.lat && location.lng && storeCoords) {
-    await calculateShipping(location.lat, location.lng, null);
-  } else {
-    setIsShippingCalculated(false);
-    setShippingCost(0);
-    setShippingDistance(0);
-  }
-};
+    setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
+    if (location.lat && location.lng && storeCoords) {
+      await calculateShipping(location.lat, location.lng, null);
+    } else {
+      setIsShippingCalculated(false);
+      setShippingCost(0);
+      setShippingDistance(0);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!isFormValid()) {
       alert('Silakan lengkapi data dan pilih alamat pengiriman');
       return;
     }
-    
     setSubmitting(true);
     try {
       let memberId = null;
@@ -148,7 +128,6 @@ const [store, setStore] = useState(null);
       let shippingLng = null;
       let guestName = null;
       let guestPhone = null;
-
       if (user) {
         memberId = user.id;
         const selectedAddress = addresses.find(a => a.id === selectedAddressId);
@@ -165,7 +144,6 @@ const [store, setStore] = useState(null);
         shippingLat = guestForm.lat;
         shippingLng = guestForm.lng;
       }
-
       if (user && saveAddressChecked && guestForm.address && guestForm.lat && guestForm.lng) {
         const { error } = await supabase
           .from('member_addresses')
@@ -179,7 +157,6 @@ const [store, setStore] = useState(null);
           }]);
         if (error) console.error('Gagal simpan alamat:', error);
       }
-
       const orderData = {
         store_id: cart.store_id,
         member_id: memberId,
@@ -191,19 +168,13 @@ const [store, setStore] = useState(null);
         shipping_cost: shippingCost,
         notes: notes
       };
-
       const order = await createOrder(orderData, cart.items);
-      console.log('Order ID yang akan dikirim:', order.id);  // <-- TAMBAHKAN INI
-      // ========== redirect upload bukti tf ==========
-    // Redirect berdasarkan status login user
-    if (user) {
-      // Member: redirect ke halaman detail order (bisa upload bukti)
-      navigate(`/member/orders/${order.id}`);
-    } else {
-      // Non-member: redirect ke halaman track order
-      navigate(`/track-order/${order.id}`);
-    }
-    // ======================================
+      console.log('Order ID yang akan dikirim:', order.id);
+      if (user) {
+        navigate(`/member/orders/${order.id}`);
+      } else {
+        navigate(`/track-order/${order.id}`);
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -212,7 +183,7 @@ const [store, setStore] = useState(null);
 
   const subtotal = getCartSubtotal(cart);
   const total = subtotal + shippingCost;
-  
+
   const isFormValid = () => {
     if (user) {
       return selectedAddressId && isShippingCalculated && shippingCost > 0;
@@ -233,31 +204,28 @@ const [store, setStore] = useState(null);
           <div className="space-y-4">
             {user ? (
               <div className="bg-gray-900/50 rounded-xl p-4">
-  <h2 className="font-semibold mb-2">Alamat Pengiriman</h2>
-  <select
-    className="w-full p-2 rounded bg-black/50 border border-white/20 mb-2"
-    value={selectedAddressId || ""}
-    onChange={(e) => handleAddressSelect(e.target.value)}
-  >
-    <option value="" disabled>-- Pilih alamat pengiriman --</option>
-    {addresses.map(addr => (
-      <option key={addr.id} value={addr.id}>
-        {addr.label} - {addr.address_text}
-      </option>
-    ))}
-  </select>
-  
-  {!selectedAddressId && (
-    <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat terlebih dahulu</p>
-  )}
-  {selectedAddressId && !isShippingCalculated && (
-    <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>
-  )}
-  {selectedAddressId && isShippingCalculated && shippingCost > 0 && (
-    <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
-  )}
-
-                
+                <h2 className="font-semibold mb-2">Alamat Pengiriman</h2>
+                <select
+                  className="w-full p-2 rounded bg-black/50 border border-white/20 mb-2"
+                  value={selectedAddressId || ""}
+                  onChange={(e) => handleAddressSelect(e.target.value)}
+                >
+                  <option value="" disabled>-- Pilih alamat pengiriman --</option>
+                  {addresses.map(addr => (
+                    <option key={addr.id} value={addr.id}>
+                      {addr.label} - {addr.address_text}
+                    </option>
+                  ))}
+                </select>
+                {!selectedAddressId && (
+                  <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat terlebih dahulu</p>
+                )}
+                {selectedAddressId && !isShippingCalculated && (
+                  <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>
+                )}
+                {selectedAddressId && isShippingCalculated && shippingCost > 0 && (
+                  <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
+                )}
                 <div className="mt-3">
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={saveAddressChecked} onChange={(e) => setSaveAddressChecked(e.target.checked)} />
@@ -281,7 +249,6 @@ const [store, setStore] = useState(null);
                 )}
               </div>
             )}
-
             <div className="bg-gray-900/50 rounded-xl p-4">
               <h2 className="font-semibold mb-2">Catatan (opsional)</h2>
               <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Contoh: Tolong dibungkus rapi" />
@@ -298,15 +265,14 @@ const [store, setStore] = useState(null);
                   <span>Rp {(item.discounted_price * item.quantity).toLocaleString()}</span>
                 </div>
               ))}
-
               <div className="flex justify-between text-sm">
-  <span>Jarak (Estimasi)</span>
-  <span>{shippingDistance > 0 ? `${shippingDistance.toFixed(1)} km` : 'Menghitung...'}</span>
-</div>
-<div className="flex justify-between text-sm">
-  <span>Estimasi Waktu</span>
-  <span>{shippingDuration > 0 ? `${shippingDuration} menit` : '-'}</span>
-</div>
+                <span>Jarak (Estimasi)</span>
+                <span>{shippingDistance > 0 ? `${shippingDistance.toFixed(1)} km` : 'Menghitung...'}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Estimasi Waktu</span>
+                <span>{shippingDuration > 0 ? `${shippingDuration} menit` : '-'}</span>
+              </div>
               <div className="flex justify-between border-t border-white/10 pt-2">
                 <span>Subtotal</span>
                 <span>Rp {subtotal.toLocaleString()}</span>
@@ -324,7 +290,6 @@ const [store, setStore] = useState(null);
                 </span>
               </div>
             </div>
-
             <div className="mt-4 p-3 bg-gray-800 rounded-lg">
               <p className="text-sm font-semibold">Transfer ke:</p>
               <p className="text-sm">Bank: BCA</p>
@@ -332,7 +297,6 @@ const [store, setStore] = useState(null);
               <p className="text-sm">a.n. PWM Store</p>
               <p className="text-xs text-gray-400 mt-1">*Rekening akan diupdate sesuai store tujuan nanti</p>
             </div>
-
             <button
               onClick={handleSubmit}
               disabled={submitting || !isFormValid()}
