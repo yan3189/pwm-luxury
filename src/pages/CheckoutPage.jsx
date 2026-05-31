@@ -1,4 +1,4 @@
-// ========== FILE: src/pages/CheckoutPage.jsx ==========
+// src/pages/CheckoutPage.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -58,7 +58,6 @@ export default function CheckoutPage() {
         .eq('member_id', user.id)
         .order('is_default', { ascending: false });
       setAddresses(addrs || []);
-      // Tidak auto-select alamat
     }
     setLoading(false);
   };
@@ -66,18 +65,13 @@ export default function CheckoutPage() {
   const calculateShipping = async (lat, lng, addressId) => {
     if (!storeCoords || !store) return;
     if (addressId) {
-      // <-- TAMBAHAN DEBUG: Log sebelum panggil API
-      console.log('🚀 Memanggil API dengan storeId:', store.id, 'addressId:', addressId);
       const apiResult = await getShippingCostWithCache(store.id, addressId);
-      console.log('🚀 API Response:', apiResult);
-      if (apiResult && apiResult.success) {
+      if (apiResult && apiResult.distanceKm) {
         setShippingCost(apiResult.cost);
         setShippingDistance(apiResult.distanceKm);
         setShippingDuration(apiResult.durationMinutes);
         setIsShippingCalculated(true);
         return;
-      } else {
-        console.warn('⚠️ API gagal, fallback ke Haversine');
       }
     }
     // Fallback Haversine
@@ -137,7 +131,7 @@ export default function CheckoutPage() {
         shippingLng = selectedAddress.longitude;
       } else {
         if (!guestForm.name || !guestForm.phone || !guestForm.address) throw new Error('Isi semua data pengiriman');
-        if (!guestForm.lat || !guestForm.lng) throw new Error('Alamat belum lengkap, silakan pilih dari peta');
+        if (!guestForm.lat || !guestForm.lng) throw new Error('Alamat belum lengkap');
         guestName = guestForm.name;
         guestPhone = guestForm.phone;
         shippingAddress = guestForm.address;
@@ -145,17 +139,14 @@ export default function CheckoutPage() {
         shippingLng = guestForm.lng;
       }
       if (user && saveAddressChecked && guestForm.address && guestForm.lat && guestForm.lng) {
-        const { error } = await supabase
-          .from('member_addresses')
-          .insert([{
-            member_id: user.id,
-            label: 'Alamat Baru',
-            address_text: guestForm.address,
-            latitude: guestForm.lat,
-            longitude: guestForm.lng,
-            is_default: false
-          }]);
-        if (error) console.error('Gagal simpan alamat:', error);
+        await supabase.from('member_addresses').insert([{
+          member_id: user.id,
+          label: 'Alamat Baru',
+          address_text: guestForm.address,
+          latitude: guestForm.lat,
+          longitude: guestForm.lng,
+          is_default: false
+        }]);
       }
       const orderData = {
         store_id: cart.store_id,
@@ -169,7 +160,6 @@ export default function CheckoutPage() {
         notes: notes
       };
       const order = await createOrder(orderData, cart.items);
-      console.log('Order ID yang akan dikirim:', order.id);
       if (user) {
         navigate(`/member/orders/${order.id}`);
       } else {
@@ -183,7 +173,6 @@ export default function CheckoutPage() {
 
   const subtotal = getCartSubtotal(cart);
   const total = subtotal + shippingCost;
-
   const isFormValid = () => {
     if (user) {
       return selectedAddressId && isShippingCalculated && shippingCost > 0;
@@ -200,7 +189,6 @@ export default function CheckoutPage() {
       <div className="max-w-4xl mx-auto px-4 py-24">
         <h1 className="text-2xl font-display mb-6">Checkout</h1>
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Form */}
           <div className="space-y-4">
             {user ? (
               <div className="bg-gray-900/50 rounded-xl p-4">
@@ -212,30 +200,18 @@ export default function CheckoutPage() {
                 >
                   <option value="" disabled>-- Pilih alamat pengiriman --</option>
                   {addresses.map(addr => (
-                    <option key={addr.id} value={addr.id}>
-                      {addr.label} - {addr.address_text}
-                    </option>
+                    <option key={addr.id} value={addr.id}>{addr.label} - {addr.address_text}</option>
                   ))}
                 </select>
-                {!selectedAddressId && (
-                  <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat terlebih dahulu</p>
-                )}
-                {selectedAddressId && !isShippingCalculated && (
-                  <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>
-                )}
-                {selectedAddressId && isShippingCalculated && shippingCost > 0 && (
-                  <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
-                )}
+                {!selectedAddressId && <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat</p>}
+                {selectedAddressId && !isShippingCalculated && <p className="text-yellow-500 text-xs mt-1">⏳ Menghitung ongkir...</p>}
+                {selectedAddressId && isShippingCalculated && shippingCost > 0 && <p className="text-green-500 text-xs mt-1">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>}
                 <div className="mt-3">
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={saveAddressChecked} onChange={(e) => setSaveAddressChecked(e.target.checked)} />
                     Simpan alamat baru (isi di bawah)
                   </label>
-                  {saveAddressChecked && (
-                    <div className="mt-2">
-                      <AddressPicker onAddressChange={handleGuestAddressChange} />
-                    </div>
-                  )}
+                  {saveAddressChecked && <div className="mt-2"><AddressPicker onAddressChange={handleGuestAddressChange} /></div>}
                 </div>
               </div>
             ) : (
@@ -244,9 +220,7 @@ export default function CheckoutPage() {
                 <input type="text" placeholder="Nama Lengkap" className="w-full p-2 rounded bg-black/50 border border-white/20" value={guestForm.name} onChange={e => setGuestForm({...guestForm, name: e.target.value})} />
                 <input type="tel" placeholder="Nomor HP" className="w-full p-2 rounded bg-black/50 border border-white/20" value={guestForm.phone} onChange={e => setGuestForm({...guestForm, phone: e.target.value})} />
                 <AddressPicker onAddressChange={handleGuestAddressChange} />
-                {guestForm.lat && guestForm.lng && isShippingCalculated && shippingCost > 0 && (
-                  <p className="text-green-500 text-xs">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>
-                )}
+                {guestForm.lat && guestForm.lng && isShippingCalculated && shippingCost > 0 && <p className="text-green-500 text-xs">✅ Ongkir terhitung: Rp {shippingCost.toLocaleString()}</p>}
               </div>
             )}
             <div className="bg-gray-900/50 rounded-xl p-4">
@@ -254,8 +228,6 @@ export default function CheckoutPage() {
               <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Contoh: Tolong dibungkus rapi" />
             </div>
           </div>
-
-          {/* Ringkasan Order */}
           <div className="bg-gray-900/50 rounded-xl p-4 space-y-3">
             <h2 className="font-semibold">Ringkasan Pesanan</h2>
             <div className="space-y-2 text-sm">
@@ -285,9 +257,7 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2 mt-2">
                 <span>Total</span>
-                <span className="text-yellow-500">
-                  {shippingCost > 0 ? `Rp ${total.toLocaleString()}` : '- - -'}
-                </span>
+                <span className="text-yellow-500">{shippingCost > 0 ? `Rp ${total.toLocaleString()}` : '- - -'}</span>
               </div>
             </div>
             <div className="mt-4 p-3 bg-gray-800 rounded-lg">
@@ -295,22 +265,15 @@ export default function CheckoutPage() {
               <p className="text-sm">Bank: BCA</p>
               <p className="text-sm">No. Rekening: 1234567890</p>
               <p className="text-sm">a.n. PWM Store</p>
-              <p className="text-xs text-gray-400 mt-1">*Rekening akan diupdate sesuai store tujuan nanti</p>
             </div>
             <button
               onClick={handleSubmit}
               disabled={submitting || !isFormValid()}
-              className={`w-full py-2 rounded-full font-semibold transition ${
-                isFormValid()
-                  ? 'bg-yellow-500 text-black hover:bg-yellow-600'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full py-2 rounded-full font-semibold transition ${isFormValid() ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
             >
               {submitting ? 'Memproses...' : 'Buat Pesanan'}
             </button>
-            {!isFormValid() && user && !selectedAddressId && (
-              <p className="text-xs text-yellow-500 text-center">Silakan pilih alamat pengiriman</p>
-            )}
+            {!isFormValid() && user && !selectedAddressId && <p className="text-xs text-yellow-500 text-center">Silakan pilih alamat pengiriman</p>}
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+// api/shipping/calculate-distance.js
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -71,32 +72,54 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Address coordinates missing' });
     }
 
-    // Panggil Google Directions API
+    // Panggil Google Routes API (Directions API alternatif)
     const origin = `${store.latitude},${store.longitude}`;
     const destination = `${addr.latitude},${addr.longitude}`;
-    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!googleApiKey) {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
       return res.status(500).json({ error: 'Google Maps API key not configured' });
     }
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${googleApiKey}`;
-    const googleRes = await fetch(url);
-    const googleData = await googleRes.json();
 
-    if (googleData.status !== 'OK') {
+    // Gunakan Routes API (Directions API dengan format baru)
+    // Endpoint: https://routes.googleapis.com/directions/v2:computeRoutes
+    const url = `https://routes.googleapis.com/directions/v2:computeRoutes`;
+    const requestBody = {
+      origin: { location: { latLng: { latitude: store.latitude, longitude: store.longitude } } },
+      destination: { location: { latLng: { latitude: addr.latitude, longitude: addr.longitude } } },
+      travelMode: "DRIVE",
+      routingPreference: "TRAFFIC_AWARE",
+      computeAlternativeRoutes: false,
+      routeModifiers: { avoidTolls: false, avoidHighways: false, avoidFerries: false },
+      languageCode: "id-ID",
+      units: "METRIC"
+    };
+
+    const googleRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const googleData = await googleRes.json();
+    if (!googleData.routes || googleData.routes.length === 0) {
+      console.error('Google Routes API error:', googleData);
       return res.status(200).json({
         success: false,
-        error: `Google API error: ${googleData.status}`,
-        message: googleData.error_message
+        error: 'Google API error: no routes',
+        message: googleData.error?.message || 'Unknown error'
       });
     }
 
     const route = googleData.routes[0];
-    const leg = route.legs[0];
-    const distanceMeters = leg.distance.value;
-    const durationSeconds = leg.duration.value;
-    const polyline = route.overview_polyline.points;
+    const distanceMeters = route.distanceMeters;
+    const durationSeconds = parseInt(route.duration.replace('s', ''), 10);
+    const polyline = route.polyline.encodedPolyline;
 
-    // Simpan cache
+    // Simpan ke cache
     await supabase
       .from('distance_cache')
       .upsert({
@@ -104,7 +127,7 @@ export default async function handler(req, res) {
         address_id: addressId,
         distance_meters: distanceMeters,
         duration_seconds: durationSeconds,
-        polyline,
+        polyline: polyline,
         last_calculated_at: new Date().toISOString()
       }, { onConflict: 'store_id, address_id' });
 
@@ -123,7 +146,7 @@ export default async function handler(req, res) {
       destinationAddress: addr.address_text
     });
   } catch (err) {
-    console.error(err);
+    console.error('Unexpected error:', err);
     return res.status(200).json({ success: false, error: err.message });
   }
 }
