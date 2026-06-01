@@ -211,3 +211,26 @@ export function decodePolyline(encoded) {
   }
   return points;
 }
+
+/**
+ * Hitung jarak menggunakan koordinat langsung (untuk alamat baru/guest)
+ * @param {string} storeId - ID store
+ * @param {number} lat - latitude tujuan
+ * @param {number} lng - longitude tujuan
+ */
+export async function calculateDistanceWithCoordinates(storeId, lat, lng) {
+  try {
+    const response = await fetch('/api/shipping/calculate-distance-by-coords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId, lat, lng })
+    });
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Distance calculation error:', error);
+    return null;
+  }
+}

@@ -5,8 +5,9 @@ import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import AddressPicker from '../components/AddressPicker';
 import { getCart, getCartSubtotal } from '../services/cartService';
-import { getStoreShippingSettings, getStoreCoordinates, haversineDistance, calculateShippingCost, getShippingCostWithCache } from '../services/shippingService';
 import { createOrder } from '../services/orderService';
+import { getStoreShippingSettings, getStoreCoordinates, haversineDistance, calculateShippingCost, getShippingCostWithCache, calculateDistanceWithCoordinates } from '../services/shippingService';
+import { getOrCreateGuestUser, saveGuestAddress } from '../services/guestService';
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState({ store_id: null, items: [] });
@@ -26,6 +27,7 @@ export default function CheckoutPage() {
   const [shippingDuration, setShippingDuration] = useState(0);
   const [store, setStore] = useState(null);
   const navigate = useNavigate();
+const [guestUser, setGuestUser] = useState(null);
 
   useEffect(() => {
     const cartData = getCart();
@@ -59,10 +61,15 @@ export default function CheckoutPage() {
         .order('is_default', { ascending: false });
       setAddresses(addrs || []);
     }
+    if (!user) {
+  // Guest: buat atau ambil user guest
+  const guest = await getOrCreateGuestUser();
+  setGuestUser(guest);
+}
     setLoading(false);
   };
 
-  const calculateShipping = async (lat, lng, addressId) => {
+  const calculateShipping = async (lat, lng, addressId, addressText = null) => {
     if (!storeCoords || !store) return;
     if (addressId) {
       const apiResult = await getShippingCostWithCache(store.id, addressId);
@@ -74,6 +81,23 @@ export default function CheckoutPage() {
         return;
       }
     }
+
+   // Kasus 2: Alamat baru (guest atau belum disimpan) - panggil API dengan koordinat
+  if (lat && lng) {
+    console.log('🔄 Menghitung jarak untuk alamat baru dengan koordinat:', lat, lng);
+    const apiResult = await calculateDistanceWithCoordinates(store.id, lat, lng);
+    console.log('📡 Response API koordinat:', apiResult);
+    
+    if (apiResult && apiResult.success) {
+      setShippingCost(apiResult.shippingCost);
+      setShippingDistance(apiResult.distanceKm);
+      setShippingDuration(apiResult.durationMinutes);
+      setIsShippingCalculated(true);
+      return;
+    } else {
+      console.log('⚠️ API koordinat gagal, fallback ke Haversine');
+    }
+  }
     // Fallback Haversine
     const distance = haversineDistance(storeCoords.lat, storeCoords.lng, lat, lng);
     const cost = calculateShippingCost(distance, shippingSettings);
@@ -99,77 +123,210 @@ export default function CheckoutPage() {
   };
 
   const handleGuestAddressChange = async (location) => {
-    setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
-    if (location.lat && location.lng && storeCoords) {
-      await calculateShipping(location.lat, location.lng, null);
-    } else {
-      setIsShippingCalculated(false);
-      setShippingCost(0);
-      setShippingDistance(0);
-    }
-  };
+  setGuestForm(prev => ({ ...prev, address: location.address, lat: location.lat, lng: location.lng }));
+  if (location.lat && location.lng && storeCoords) {
+    // Kirim addressText (opsional) untuk logging
+    await calculateShipping(location.lat, location.lng, null, location.address);
+  } else {
+    setIsShippingCalculated(false);
+    setShippingCost(0);
+    setShippingDistance(0);
+  }
+};
 
   const handleSubmit = async () => {
-    if (!isFormValid()) {
-      alert('Silakan lengkapi data dan pilih alamat pengiriman');
-      return;
+  if (!isFormValid()) {
+    alert('Silakan lengkapi data dan pilih alamat pengiriman');
+    return;
+  }
+  
+  setSubmitting(true);
+  
+  try {
+    let memberId = null;
+    let shippingAddress = '';
+    let shippingLat = null;
+    let shippingLng = null;
+    let guestName = null;
+    let guestPhone = null;
+    let addressId = null; // Untuk menyimpan ID alamat guest
+    
+    // ========== KASUS MEMBER (LOGIN) ==========
+    if (user) {
+      memberId = user.id;
+      const selectedAddress = addresses.find(a => a.id === selectedAddressId);
+      if (!selectedAddress) throw new Error('Pilih alamat pengiriman');
+      shippingAddress = selectedAddress.address_text;
+      shippingLat = selectedAddress.latitude;
+      shippingLng = selectedAddress.longitude;
+      addressId = selectedAddress.id;
+    } 
+ // ========== KASUS GUEST (NON-MEMBER) ==========
+else {
+  if (!guestForm.name || !guestForm.phone || !guestForm.address) throw new Error('Isi semua data pengiriman');
+  if (!guestForm.lat || !guestForm.lng) throw new Error('Alamat belum lengkap, silakan pilih dari peta');
+  
+  guestName = guestForm.name;
+  guestPhone = guestForm.phone;
+  shippingAddress = guestForm.address;
+  shippingLat = guestForm.lat;
+  shippingLng = guestForm.lng;
+  
+  if (!guestUser) throw new Error('Guest user not initialized');
+  memberId = guestUser.id;
+  
+  // Coba simpan alamat baru
+  let savedAddress = null;
+  try {
+    savedAddress = await saveGuestAddress(guestUser.id, guestForm.lat, guestForm.lng, guestForm.address);
+  } catch (err) {
+    console.log('Save failed, looking for existing address...');
+  }
+  
+  // Jika gagal (duplicate), cari alamat yang sudah ada untuk guest ini
+  if (!savedAddress) {
+    const { data: existingAddr, error: findError } = await supabase
+      .from('member_addresses')
+      .select('id')
+      .eq('member_id', guestUser.id)
+      .maybeSingle();
+    
+    if (!findError && existingAddr) {
+      savedAddress = existingAddr;
+      console.log('Using existing address ID:', savedAddress.id);
     }
-    setSubmitting(true);
-    try {
-      let memberId = null;
-      let shippingAddress = '';
-      let shippingLat = null;
-      let shippingLng = null;
-      let guestName = null;
-      let guestPhone = null;
-      if (user) {
-        memberId = user.id;
-        const selectedAddress = addresses.find(a => a.id === selectedAddressId);
-        if (!selectedAddress) throw new Error('Pilih alamat pengiriman');
-        shippingAddress = selectedAddress.address_text;
-        shippingLat = selectedAddress.latitude;
-        shippingLng = selectedAddress.longitude;
-      } else {
-        if (!guestForm.name || !guestForm.phone || !guestForm.address) throw new Error('Isi semua data pengiriman');
-        if (!guestForm.lat || !guestForm.lng) throw new Error('Alamat belum lengkap');
-        guestName = guestForm.name;
-        guestPhone = guestForm.phone;
-        shippingAddress = guestForm.address;
-        shippingLat = guestForm.lat;
-        shippingLng = guestForm.lng;
-      }
-      if (user && saveAddressChecked && guestForm.address && guestForm.lat && guestForm.lng) {
-        await supabase.from('member_addresses').insert([{
+  }
+  
+  if (savedAddress) {
+    addressId = savedAddress.id;
+    console.log('Guest address ID:', addressId);
+  }
+}
+    
+    // ========== MEMBER: SIMPAN ALAMAT BARU JIKA DICENTANG ==========
+    if (user && saveAddressChecked && guestForm.address && guestForm.lat && guestForm.lng) {
+      const { data: newAddress, error: addressError } = await supabase
+        .from('member_addresses')
+        .insert([{
           member_id: user.id,
           label: 'Alamat Baru',
           address_text: guestForm.address,
           latitude: guestForm.lat,
           longitude: guestForm.lng,
           is_default: false
-        }]);
+        }])
+        .select()
+        .single();
+      
+      if (!addressError && newAddress) {
+        console.log('New member address saved:', newAddress.id);
+        
+        // Hitung dan simpan cache untuk alamat baru member
+        const apiResult = await calculateDistanceWithCoordinates(cart.store_id, guestForm.lat, guestForm.lng);
+        if (apiResult && apiResult.success) {
+          await supabase
+            .from('distance_cache')
+            .upsert({
+              store_id: cart.store_id,
+              address_id: newAddress.id,
+              distance_meters: apiResult.distanceMeters,
+              duration_seconds: apiResult.durationSeconds,
+              polyline: apiResult.polyline,
+              last_calculated_at: new Date().toISOString()
+            }, { onConflict: 'store_id, address_id' });
+          console.log('Cache saved for new member address');
+        }
       }
-      const orderData = {
-        store_id: cart.store_id,
-        member_id: memberId,
-        guest_name: guestName,
-        guest_phone: guestPhone,
-        shipping_address: shippingAddress,
-        shipping_latitude: shippingLat,
-        shipping_longitude: shippingLng,
-        shipping_cost: shippingCost,
-        notes: notes
-      };
-      const order = await createOrder(orderData, cart.items);
-      if (user) {
-        navigate(`/member/orders/${order.id}`);
-      } else {
-        navigate(`/track-order/${order.id}`);
-      }
-    } catch (err) {
-      alert(err.message);
     }
-    setSubmitting(false);
-  };
+    
+    // ========== BUAT ORDER ==========
+    const orderData = {
+      store_id: cart.store_id,
+      member_id: memberId,
+      guest_name: guestName,
+      guest_phone: guestPhone,
+      shipping_address: shippingAddress,
+      shipping_latitude: shippingLat,
+      shipping_longitude: shippingLng,
+      shipping_cost: shippingCost,
+      notes: notes,
+      address_id: addressId // untuk guest, simpan ID alamat
+    };
+    
+    const order = await createOrder(orderData, cart.items);
+    console.log('Order created:', order.id);
+    
+    // ========== UPDATE ORDER DENGAN ADDRESS_ID UNTUK GUEST ==========
+    if (!user && addressId) {
+      await supabase
+        .from('orders')
+        .update({ address_id: addressId })
+        .eq('id', order.id);
+      console.log('Order updated with guest address ID');
+    }
+    
+ // ========== SIMPAN CACHE UNTUK GUEST ==========
+console.log('===== CHECKING CACHE SAVE CONDITION =====');
+console.log('user:', user);
+console.log('guestForm.lat:', guestForm.lat);
+console.log('guestForm.lng:', guestForm.lng);
+console.log('addressId:', addressId);
+
+if (!user && guestForm.lat && guestForm.lng && addressId) {
+  console.log('===== SAVING CACHE FOR GUEST =====');
+  console.log('store_id:', cart.store_id);
+  console.log('address_id:', addressId);
+  
+  // Hitung jarak dengan API
+  const apiResult = await calculateDistanceWithCoordinates(cart.store_id, guestForm.lat, guestForm.lng);
+  console.log('API Result:', apiResult);
+  
+  if (apiResult && apiResult.success) {
+    const cacheData = {
+      store_id: cart.store_id,
+      address_id: addressId,
+      distance_meters: apiResult.distanceMeters,
+      duration_seconds: apiResult.durationSeconds,
+      polyline: apiResult.polyline,
+      last_calculated_at: new Date().toISOString()
+    };
+    console.log('Inserting cache:', cacheData);
+    
+    const { data: upsertData, error: cacheError } = await supabase
+      .from('distance_cache')
+      .upsert(cacheData, { onConflict: 'store_id, address_id' })
+      .select();
+    
+    if (cacheError) {
+      console.error('❌ Cache save FAILED:', cacheError);
+    } else {
+      console.log('✅ Cache save SUCCESS:', upsertData);
+    }
+  } else {
+    console.error('❌ API failed, cannot save cache');
+  }
+} else {
+  console.log('❌ Condition not met for cache save');
+  console.log('- user:', user);
+  console.log('- guestForm.lat:', guestForm.lat);
+  console.log('- guestForm.lng:', guestForm.lng);
+  console.log('- guestAddressId:', addressId);
+}
+    
+    // ========== REDIRECT ==========
+    if (user) {
+      navigate(`/member/orders/${order.id}`);
+    } else {
+      navigate(`/track-order/${order.id}`);
+    }
+    
+  } catch (err) {
+    console.error('Submit error:', err);
+    alert(err.message);
+  }
+  
+  setSubmitting(false);
+};
 
   const subtotal = getCartSubtotal(cart);
   const total = subtotal + shippingCost;
@@ -180,6 +337,8 @@ export default function CheckoutPage() {
       return guestForm.name && guestForm.phone && guestForm.address && guestForm.lat && guestForm.lng && isShippingCalculated && shippingCost > 0;
     }
   };
+
+
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
 
@@ -270,10 +429,11 @@ export default function CheckoutPage() {
               onClick={handleSubmit}
               disabled={submitting || !isFormValid()}
               className={`w-full py-2 rounded-full font-semibold transition ${isFormValid() ? 'bg-yellow-500 text-black hover:bg-yellow-600' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-            >
+            > 
               {submitting ? 'Memproses...' : 'Buat Pesanan'}
             </button>
             {!isFormValid() && user && !selectedAddressId && <p className="text-xs text-yellow-500 text-center">Silakan pilih alamat pengiriman</p>}
+          
           </div>
         </div>
       </div>

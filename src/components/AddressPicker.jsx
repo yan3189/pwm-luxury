@@ -1,5 +1,4 @@
 // ========== FILE: src/components/AddressPicker.jsx ==========
-// Komponen input alamat dengan Google Maps (untuk member)
 import { useState, useRef, useEffect } from 'react';
 import { useLoadScript, Autocomplete, GoogleMap, Marker } from '@react-google-maps/api';
 
@@ -40,13 +39,26 @@ export default function AddressPicker({ initialLat, initialLng, initialAddress, 
     }
   };
 
-  const onMapClick = (event) => {
+  const onMapClick = async (event) => {
     const lat = event.latLng.lat();
     const lng = event.latLng.lng();
     setSelectedLat(lat);
     setSelectedLng(lng);
     setMapCenter({ lat, lng });
-    if (onAddressChange) onAddressChange({ lat, lng, address });
+    
+    // Reverse geocoding: dapatkan alamat dari koordinat
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === 'OK' && results && results[0]) {
+        const formattedAddress = results[0].formatted_address;
+        setAddress(formattedAddress);
+        if (onAddressChange) onAddressChange({ lat, lng, address: formattedAddress });
+      } else {
+        const fallbackAddress = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        setAddress(fallbackAddress);
+        if (onAddressChange) onAddressChange({ lat, lng, address: fallbackAddress });
+      }
+    });
   };
 
   if (!isLoaded) return <div className="text-gray-400">Memuat peta...</div>;

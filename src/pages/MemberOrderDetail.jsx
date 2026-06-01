@@ -199,7 +199,7 @@ setLoading(false);
 console.log('===== FETCH COMPLETE =====');
   };
 
- // ========== REALTIME SUBSCRIPTION ==========
+// ========== REALTIME SUBSCRIPTION (LENGKAP DENGAN STATUS) ==========
 useEffect(() => {
   if (!delivery || !delivery.id) {
     console.log('No delivery assignment, skipping realtime subscription');
@@ -217,7 +217,7 @@ useEffect(() => {
     .on('broadcast', { event: 'location-update' }, (payload) => {
       if (!isMounted) return;
       
-      const { lat, lng, heading, timestamp } = payload.payload;
+      const { lat, lng, heading } = payload.payload;
       console.log('📍 Location update received:', { lat, lng, heading });
       
       // Update last update time
@@ -230,9 +230,7 @@ useEffect(() => {
       }
       
       // Update heading untuk rotasi marker
-      if (heading !== undefined) {
-        setCourierHeading(heading);
-      }
+      if (heading !== undefined) setCourierHeading(heading);
       
       // Animasi smooth movement
       if (courierLocation && courierLocation[0] && courierLocation[1]) {
@@ -272,7 +270,7 @@ useEffect(() => {
       if (!isMounted) return;
       
       const { status } = payload.payload;
-      console.log('Tracking status update:', status);
+      console.log('📡 Tracking status update:', status);
       
       if (status === 'active') {
         setIsTrackingActive(true);
@@ -285,18 +283,19 @@ useEffect(() => {
       console.log('Realtime subscription status:', status);
     });
   
-  // Timeout detection: cek setiap 10 detik, jika 30 detik no update -> timeout
+  // Timeout detection: cek setiap 10 detik
   statusCheckInterval = setInterval(() => {
     if (!isMounted) return;
     
+    // Hanya cek jika status pernah aktif (true) dan tidak ada update dalam 30 detik
     if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
       console.log('No location update for 30 seconds, marking tracking as timeout');
       setIsTrackingActive('timeout');
     }
   }, 10000);
   
-  // Set initial tracking active state
-  setIsTrackingActive(true);
+  // Jangan set isTrackingActive ke true secara otomatis!
+  // Biarkan status ditentukan oleh event tracking-status dari kurir
   
   return () => {
     console.log('Cleaning up realtime subscription');
@@ -386,7 +385,9 @@ const showTrackingTab = delivery &&
   if (!order) return <div className="bg-black min-h-screen text-white p-8 text-center">Pesanan tidak ditemukan</div>;
 
   const canUpload = order.status === 'pending' && !order.payment_proof_url;
-
+// Siapkan koordinat untuk TrackingMap
+const storeLocation = store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null;
+const destination = order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null;
   return (
     <div className="bg-black text-white min-h-screen">
       <Navbar />
@@ -514,57 +515,60 @@ const showTrackingTab = delivery &&
             </div>
           )}
 
-          {/* ========== TAB: PETA TRACKING ========== */}
-          {activeTab === 'map' && (
-            <div className="space-y-4">
-              {/* Status Pengiriman */}
-<div className="bg-gray-800/50 rounded-lg p-4">
-  <h3 className="font-semibold flex items-center gap-2 mb-3">
-    <Truck size={18} className="text-yellow-500" />
-    Status Pengiriman
-  </h3>
-  <div className="flex justify-between items-center flex-wrap gap-2">
-    <div>
-      <p className="text-sm">Status: <span className="font-bold uppercase text-yellow-500">{delivery?.status || 'assigned'}</span></p>
-      {courier && <p className="text-sm text-gray-400">Kurir: {courier.full_name || courier.email}</p>}
+{/* Tab Tracking */}
+{activeTab === 'map' && (
+  <div className="space-y-4">
+    <div className="bg-gray-800/50 rounded-lg p-4">
+      <h3 className="font-semibold flex gap-2 mb-2">
+        <Truck size={18} className="text-yellow-500" /> Status Pengiriman
+      </h3>
+      <div>
+        <p className="text-sm">
+          Status: <span className="font-bold uppercase">{delivery?.status || order.status}</span>
+        </p>
+        {courier && <p className="text-sm text-gray-400">Kurir: {courier.full_name || courier.email}</p>}
+      </div>
+      
+      {/* Status Live Tracking dengan 3 kondisi */}
+      <div className="mt-2">
+        {isTrackingActive === true && (
+          <div className="flex items-center gap-1 text-green-500 text-xs bg-green-500/10 px-2 py-1 rounded-full inline-flex">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            Live Tracking Aktif
+          </div>
+        )}
+        {isTrackingActive === false && (
+          <div className="flex items-center gap-1 text-red-500 text-xs bg-red-500/10 px-2 py-1 rounded-full inline-flex">
+            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+            Live Tracking Tidak Aktif
+          </div>
+        )}
+        {isTrackingActive === 'timeout' && (
+          <div className="flex items-center gap-1 text-yellow-500 text-xs bg-yellow-500/10 px-2 py-1 rounded-full inline-flex">
+            <span className="text-sm">⚠️</span>
+            Live Tracking Terputus
+          </div>
+        )}
+        {isTrackingActive === null && (
+          <div className="flex items-center gap-1 text-gray-500 text-xs bg-gray-500/10 px-2 py-1 rounded-full inline-flex">
+            <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+            Menunggu status tracking...
+          </div>
+        )}
+      </div>
     </div>
     
-    {/* Tracking Status dengan 3 kondisi */}
-    {isTrackingActive === true && (
-      <div className="flex items-center gap-1 text-green-500 text-xs bg-green-500/10 px-2 py-1 rounded-full">
-        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-        Live Tracking Aktif
-      </div>
-    )}
-    
-    {isTrackingActive === false && (
-      <div className="flex items-center gap-1 text-red-500 text-xs bg-red-500/10 px-2 py-1 rounded-full">
-        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-        Live Tracking Tidak Aktif
-      </div>
-    )}
-    
-    {isTrackingActive === 'timeout' && (
-      <div className="flex items-center gap-1 text-yellow-500 text-xs bg-yellow-500/10 px-2 py-1 rounded-full">
-        <span className="text-sm">⚠️</span>
-        Live Tracking Terputus
-      </div>
-    )}
-  </div>
-</div>
-
-            
-{/* Peta */}
-<TrackingMap
-  storeLogo={store?.logo}
-  storeLocation={store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null}
-  destination={order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null}
-  courierLocation={courierLocation}
-  polyline={routePolyline}
-  courierHeading={courierHeading}
-  storeName={store?.name}
-  destinationAddress={order?.shipping_address}
-/>
+    {/* Peta Tracking */}
+    <TrackingMap
+      storeLocation={storeLocation}
+      storeLogo={store?.logo}
+      storeName={store?.name}
+      destination={destination}
+      destinationAddress={order?.shipping_address}
+      courierLocation={courierLocation}
+      polyline={routePolyline}
+      courierHeading={courierHeading}
+    />
 
               {/* Informasi Tracking */}
               {delivery && (

@@ -26,21 +26,22 @@ export async function createOrder(orderData, items) {
   const totalAmount = items.reduce((sum, item) => sum + (item.discounted_price * item.quantity), 0) + (orderData.shipping_cost || 0)
   
   const orderPayload = {
-    order_number: generateOrderNumber(),
-    store_id: orderData.store_id,
-    member_id: orderData.member_id || null,
-    guest_name: orderData.guest_name || null,
-    guest_phone: orderData.guest_phone || null,
-    shipping_address: orderData.shipping_address,
-    shipping_latitude: orderData.shipping_latitude,
-    shipping_longitude: orderData.shipping_longitude,
-    shipping_cost: orderData.shipping_cost || 0,
-    total_amount: totalAmount,
-    status: 'pending',
-    payment_method: 'bank_transfer',
-    notes: orderData.notes || null,
-    created_at: new Date().toISOString()
-  }
+  order_number: generateOrderNumber(),
+  store_id: orderData.store_id,
+  member_id: orderData.member_id || null,
+  guest_name: orderData.guest_name || null,
+  guest_phone: orderData.guest_phone || null,
+  shipping_address: orderData.shipping_address,
+  shipping_latitude: orderData.shipping_latitude,
+  shipping_longitude: orderData.shipping_longitude,
+  shipping_cost: orderData.shipping_cost || 0,
+  address_id: orderData.address_id || null,  // ← TAMBAHKAN
+  total_amount: totalAmount,
+  status: 'pending',
+  payment_method: 'bank_transfer',
+  notes: orderData.notes || null,
+  created_at: new Date().toISOString()
+};
   
   const { data: order, error: orderError } = await supabase
     .from('orders')
