@@ -556,6 +556,7 @@ const showTrackingTab = delivery &&
             
 {/* Peta */}
 <TrackingMap
+  storeLogo={store?.logo}
   storeLocation={store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null}
   destination={order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null}
   courierLocation={courierLocation}

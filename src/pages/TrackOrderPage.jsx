@@ -553,7 +553,8 @@ if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitu
 
 {/* Peta */}
 <TrackingMap
-  storeLocation={storeLocation}
+storeLogo={store?.logo}
+storeLocation={storeLocation}
   destination={destination}
   courierLocation={courierLocation}
   polyline={routePolyline}
