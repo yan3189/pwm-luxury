@@ -281,6 +281,12 @@ useEffect(() => {
   let statusCheckInterval = null;
   let isMounted = true;
   
+  // Ambil destination dari state di luar useEffect (tapi pakai closure)
+  const destLat = order?.shipping_latitude;
+  const destLng = order?.shipping_longitude;
+  const storeIdData = store?.id;
+  const addressIdData = order?.address_id;
+  
   const channel = supabase
     .channel(`tracking:${delivery.id}`)
     .on('broadcast', { event: 'location-update' }, async (payload) => {
@@ -292,13 +298,6 @@ useEffect(() => {
       // Update last update time
       lastUpdateTime = Date.now();
       
-
-// ========== TAMBAHKAN KODE ETA DI SINI ==========
-if (destination && destination[0] && destination[1] && lat && lng) {
-  const newEta = await calculateETA(lat, lng, destination[0], destination[1], store?.id, order?.address_id);
-  setEta(newEta);
-}
-
       // Reset status ke aktif jika sebelumnya timeout
       if (isTrackingActive === 'timeout') {
         console.log('Resetting tracking status from timeout to active');
@@ -337,6 +336,13 @@ if (destination && destination[0] && destination[1] && lat && lng) {
         setCourierLocation([lat, lng]);
       }
       
+      // ========== HITUNG ETA ==========
+      if (destLat && destLng && lat && lng) {
+        const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
+        setEta(newEta);
+      }
+      // =================================
+      
       // Update map center
       if (mapRef.current && lat && lng) {
         mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
@@ -359,19 +365,15 @@ if (destination && destination[0] && destination[1] && lat && lng) {
       console.log('Realtime subscription status:', status);
     });
   
-  // Timeout detection: cek setiap 10 detik
+  // Timeout detection
   statusCheckInterval = setInterval(() => {
     if (!isMounted) return;
     
-    // Hanya cek jika status pernah aktif (true) dan tidak ada update dalam 30 detik
     if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
       console.log('No location update for 30 seconds, marking tracking as timeout');
       setIsTrackingActive('timeout');
     }
   }, 10000);
-  
-  // Jangan set isTrackingActive ke true secara otomatis!
-  // Biarkan status ditentukan oleh event tracking-status dari kurir
   
   return () => {
     console.log('Cleaning up realtime subscription');
@@ -380,7 +382,7 @@ if (destination && destination[0] && destination[1] && lat && lng) {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
     if (statusCheckInterval) clearInterval(statusCheckInterval);
   };
-}, [delivery, courierLocation]);
+}, [delivery, courierLocation, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
 
   const getStatusBadge = (status) => {
     const colors = { 
