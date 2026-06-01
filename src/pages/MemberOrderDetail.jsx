@@ -10,6 +10,7 @@ import TrackingMap from '../components/TrackingMap';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { calculateETA } from '../services/etaService';
 
 // Fix untuk marker icon Leaflet di Vite
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -41,6 +42,7 @@ export default function MemberOrderDetail() {
   const mapRef = useRef(null);
   const [routePolyline, setRoutePolyline] = useState([]);
 const [courierHeading, setCourierHeading] = useState(0);
+const [eta, setEta] = useState(null);
 
 function decodePolyline(encoded) {
   if (!encoded) return [];
@@ -149,17 +151,25 @@ if (orderData.delivery_type === 'internal') {
   }
 }
 
-// ========== KODE POLYLINE (GUNAKAN storeData dan orderData) ==========
-console.log('🔍 DEBUG: Memeriksa kondisi untuk mengambil polyline');
+// ========== AMBIL POLYLINE (PRIORITAS START ROUTE DARI DELIVERY) ==========
+console.log('🔍 Mencari polyline...');
 console.log('storeData:', storeData?.id);
-console.log('orderData?.shipping_latitude:', orderData?.shipping_latitude);
-console.log('orderData?.address_id:', orderData?.address_id);
+console.log('orderData.shipping_latitude:', orderData.shipping_latitude);
+console.log('orderData.address_id:', orderData.address_id);
+console.log('delivery?.start_route_polyline exists?', !!delivery?.start_route_polyline);
 
-if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+// PRIORITAS 1: Gunakan start_route_polyline dari delivery (jika ada)
+if (delivery?.start_route_polyline) {
+  console.log('✅ Using start route polyline from delivery');
+  setRoutePolyline(delivery.start_route_polyline);
+} 
+// PRIORITAS 2: Cari dari cache berdasarkan address_id
+else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
   let addressId = orderData.address_id;
   
+  // Jika tidak ada address_id, cari di member_addresses
   if (!addressId && orderData.shipping_address) {
-    console.log('Tidak ada address_id, mencoba mencari berdasarkan shipping_address:', orderData.shipping_address);
+    console.log('Mencari address_id dari shipping_address...');
     const { data: addrData } = await supabase
       .from('member_addresses')
       .select('id')
@@ -169,23 +179,19 @@ if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitu
   }
   
   if (addressId) {
-    console.log('Mengambil polyline untuk store:', storeData.id, 'address:', addressId);
-    const { data: cacheData, error: cacheError } = await supabase
+    console.log('Mengambil polyline dari cache untuk store:', storeData.id, 'address:', addressId);
+    const { data: cacheData } = await supabase
       .from('distance_cache')
       .select('polyline')
       .eq('store_id', storeData.id)
       .eq('address_id', addressId)
       .maybeSingle();
     
-    if (cacheError) {
-      console.error('Error mengambil polyline:', cacheError);
-    }
-    
     if (cacheData?.polyline) {
-      console.log('✅ Polyline ditemukan, panjang:', cacheData.polyline.length);
+      console.log('✅ Polyline ditemukan di cache');
       setRoutePolyline(cacheData.polyline);
     } else {
-      console.log('❌ Polyline tidak ditemukan di cache untuk kombinasi ini');
+      console.log('❌ Polyline tidak ditemukan di cache');
     }
   } else {
     console.log('❌ Tidak ada address_id yang valid');
@@ -193,6 +199,7 @@ if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitu
 } else {
   console.log('❌ Kondisi tidak terpenuhi: storeData atau orderData koordinat tidak lengkap');
 }
+// ============================================================
 
 // 6. Selesai
 setLoading(false);
@@ -214,7 +221,7 @@ useEffect(() => {
   
   const channel = supabase
     .channel(`tracking:${delivery.id}`)
-    .on('broadcast', { event: 'location-update' }, (payload) => {
+    .on('broadcast', { event: 'location-update' }, async (payload) => {
       if (!isMounted) return;
       
       const { lat, lng, heading } = payload.payload;
@@ -223,6 +230,11 @@ useEffect(() => {
       // Update last update time
       lastUpdateTime = Date.now();
       
+// ========== TAMBAHKAN KODE ETA DI SINI ==========
+if (destination && destination[0] && destination[1] && lat && lng) {
+  const newEta = await calculateETA(lat, lng, destination[0], destination[1], store?.id, order?.address_id);
+  setEta(newEta);
+}
       // Reset status ke aktif jika sebelumnya timeout
       if (isTrackingActive === 'timeout') {
         console.log('Resetting tracking status from timeout to active');
@@ -555,6 +567,12 @@ const destination = order?.shipping_latitude && order?.shipping_longitude ? [ord
             Menunggu status tracking...
           </div>
         )}
+        <div className="flex justify-between text-sm mt-2">
+  <span>Estimasi Tiba (ETA)</span>
+  <span className="text-yellow-500 font-semibold">
+    {eta !== null ? `${eta} menit` : 'Menghitung...'}
+  </span>
+</div>
       </div>
     </div>
     
@@ -582,6 +600,7 @@ const destination = order?.shipping_latitude && order?.shipping_longitude ? [ord
                   )}
                 </div>
               )}
+              
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import TrackingMap from '../components/TrackingMap';
 import { Package, MapPin, Calendar, CheckCircle, AlertCircle, Truck, Download, ArrowLeft, Upload, MessageCircle } from 'lucide-react';
+import { calculateETA } from '../services/etaService';
 
 export default function TrackOrderPage() {
   const { id } = useParams();
@@ -25,6 +26,7 @@ export default function TrackOrderPage() {
   const [isTrackingActive, setIsTrackingActive] = useState(null);
   const mapRef = useRef(null);
   const animationRef = useRef(null);
+  const [eta, setEta] = useState(null);
 
   useEffect(() => {
     if (id) {
@@ -112,50 +114,55 @@ export default function TrackOrderPage() {
     
   let addressId = orderData.address_id;
 
-// Jika tidak ada, cari berdasarkan shipping_address
-if (!addressId && orderData.shipping_address) {
-  const { data: addrData } = await supabase
-    .from('member_addresses')
-    .select('id')
-    .eq('address_text', orderData.shipping_address)
-    .maybeSingle();
-  if (addrData) addressId = addrData.id;
-}
+// ========== AMBIL POLYLINE (PRIORITAS START ROUTE DARI DELIVERY) ==========
+console.log('🔍 Mencari polyline...');
+console.log('storeData:', storeData?.id);
+console.log('orderData.shipping_latitude:', orderData.shipping_latitude);
+console.log('orderData.address_id:', orderData.address_id);
+console.log('delivery?.start_route_polyline exists?', !!delivery?.start_route_polyline);
 
-if (addressId) {
-  const { data: cacheData } = await supabase
-    .from('distance_cache')
-    .select('polyline')
-    .eq('store_id', storeData.id)
-    .eq('address_id', addressId)
-    .maybeSingle();
+// PRIORITAS 1: Gunakan start_route_polyline dari delivery (jika ada)
+if (delivery?.start_route_polyline) {
+  console.log('✅ Using start route polyline from delivery');
+  setRoutePolyline(delivery.start_route_polyline);
+} 
+// PRIORITAS 2: Cari dari cache berdasarkan address_id
+else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+  let addressId = orderData.address_id;
   
-  if (cacheData?.polyline) {
-    console.log('✅ Polyline ditemukan');
-    setRoutePolyline(cacheData.polyline);
-  } else {
-    console.log('❌ Polyline tidak ditemukan');
+  // Jika tidak ada address_id, cari di member_addresses
+  if (!addressId && orderData.shipping_address) {
+    console.log('Mencari address_id dari shipping_address...');
+    const { data: addrData } = await supabase
+      .from('member_addresses')
+      .select('id')
+      .eq('address_text', orderData.shipping_address)
+      .maybeSingle();
+    if (addrData) addressId = addrData.id;
   }
-
-
-      
-      if (addressId) {
-        console.log('Mengambil polyline untuk store:', storeData.id, 'address:', addressId);
-        const { data: cacheData } = await supabase
-          .from('distance_cache')
-          .select('polyline')
-          .eq('store_id', storeData.id)
-          .eq('address_id', addressId)
-          .maybeSingle();
-        
-        if (cacheData?.polyline) {
-          console.log('✅ Polyline ditemukan!');
-          setRoutePolyline(cacheData.polyline);
-        } else {
-          console.log('❌ Polyline tidak ditemukan');
-        }
-      }
+  
+  if (addressId) {
+    console.log('Mengambil polyline dari cache untuk store:', storeData.id, 'address:', addressId);
+    const { data: cacheData } = await supabase
+      .from('distance_cache')
+      .select('polyline')
+      .eq('store_id', storeData.id)
+      .eq('address_id', addressId)
+      .maybeSingle();
+    
+    if (cacheData?.polyline) {
+      console.log('✅ Polyline ditemukan di cache');
+      setRoutePolyline(cacheData.polyline);
+    } else {
+      console.log('❌ Polyline tidak ditemukan di cache');
     }
+  } else {
+    console.log('❌ Tidak ada address_id yang valid');
+  }
+} else {
+  console.log('❌ Kondisi tidak terpenuhi: storeData atau orderData koordinat tidak lengkap');
+}
+// ============================================================
     
     setLoading(false);
     console.log('===== FETCH COMPLETE =====');
@@ -176,7 +183,7 @@ useEffect(() => {
   
   const channel = supabase
     .channel(`tracking:${delivery.id}`)
-    .on('broadcast', { event: 'location-update' }, (payload) => {
+    .on('broadcast', { event: 'location-update' }, async (payload) => {
       if (!isMounted) return;
       
       const { lat, lng, heading } = payload.payload;
@@ -185,6 +192,11 @@ useEffect(() => {
       // Update last update time
       lastUpdateTime = Date.now();
       
+  if (destination && destination[0] && destination[1] && lat && lng) {
+    const newEta = await calculateETA(lat, lng, destination[0], destination[1], store?.id, order?.address_id);
+    setEta(newEta);
+  }
+
       // Reset status ke aktif jika sebelumnya timeout
       if (isTrackingActive === 'timeout') {
         console.log('Resetting tracking status from timeout to active');
@@ -504,6 +516,10 @@ const destination = order?.shipping_latitude && order?.shipping_longitude ? [ord
             Menunggu status tracking...
           </div>
         )}
+        <div className="flex justify-between text-sm">
+  <span>Estimasi Tiba (ETA)</span>
+  <span>{eta !== null ? `${eta} menit` : 'Menghitung...'}</span>
+</div>
       </div>
     </div>
     

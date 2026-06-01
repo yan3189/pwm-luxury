@@ -218,23 +218,58 @@ export default function CourierDashboard() {
   const updates = { status: newStatus };
   if (newStatus === 'on_delivery' && !delivery.started_at) {
     updates.started_at = new Date().toISOString();
+    
+   // ========== TAMBAHKAN KODE UNTUK GET START ROUTE ==========
+  try {
+    // Dapatkan posisi kurir saat ini
+    const getCurrentPosition = () => new Promise((resolve, reject) => {
+      if (!navigator.geolocation) reject('Geolocation not supported');
+      navigator.geolocation.getCurrentPosition(resolve, reject, { 
+        enableHighAccuracy: true, 
+        timeout: 10000 
+      });
+    });
+    
+    const position = await getCurrentPosition();
+    const courierLat = position.coords.latitude;
+    const courierLng = position.coords.longitude;
+    const destLat = delivery.orders?.shipping_latitude;
+    const destLng = delivery.orders?.shipping_longitude;
+    
+    if (destLat && destLng) {
+      const response = await fetch('/api/shipping/route-from-current', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courierLat,
+          courierLng,
+          destinationLat: destLat,
+          destinationLng: destLng,
+          storeId: delivery.orders?.store_id
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        updates.start_route_polyline = data.polyline;
+        updates.start_distance_meters = data.distanceMeters;
+        updates.start_duration_seconds = data.durationSeconds;
+        console.log('✅ Start route saved:', data.distanceKm, 'km,', data.durationMinutes, 'min');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to get start route:', err);
   }
+  // ========================================================
+}
+  
   if (newStatus === 'completed') {
     updates.completed_at = new Date().toISOString();
     stopTracking(deliveryId);
-    
-    // 🔥 TAMBAHKAN: Update order status menjadi delivered
-    const { error: orderError } = await supabase
+    // Update order status
+    await supabase
       .from('orders')
-      .update({ 
-        status: 'delivered', 
-        updated_at: new Date().toISOString() 
-      })
+      .update({ status: 'delivered', updated_at: new Date().toISOString() })
       .eq('id', delivery.order_id);
-    
-    if (orderError) {
-      console.error('Gagal update order status:', orderError);
-    }
   }
   
   const { error } = await supabase
