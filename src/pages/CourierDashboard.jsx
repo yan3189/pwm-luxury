@@ -73,28 +73,45 @@ export default function CourierDashboard() {
       // Ambil orders dengan order_items
       const orderIds = assignments.map(a => a.order_id);
       const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          id, 
-          order_number, 
-          total_amount, 
-          shipping_address, 
-          shipping_latitude, 
-          shipping_longitude, 
-          guest_name, 
-          guest_phone, 
-          notes, 
-          store_id, 
-          status,
-          order_items (
-            product_name,
-            quantity,
-            total
-          )
-        `)
-        .in('id', orderIds);
+  .from('orders')
+  .select(`
+    id, 
+    order_number, 
+    total_amount, 
+    shipping_cost,
+    shipping_address, 
+    shipping_latitude, 
+    shipping_longitude, 
+    guest_name, 
+    guest_phone, 
+    notes, 
+    store_id, 
+    status,
+    member_id,
+    order_items (
+      product_name,
+      quantity,
+      total
+    )
+  `)
+  .in('id', orderIds);
       
       if (ordersError) throw ordersError;
+
+      // Ambil data member untuk order yang memiliki member_id
+const memberIds = [...new Set((orders || []).filter(o => o.member_id).map(o => o.member_id))];
+let membersMap = new Map();
+
+if (memberIds.length > 0) {
+  const { data: members, error: membersError } = await supabase
+    .from('users')
+    .select('id, full_name, phone, email')
+    .in('id', memberIds);
+  
+  if (!membersError && members) {
+    members.forEach(m => membersMap.set(m.id, m));
+  }
+}
       
       // Ambil stores
       const storeIds = [...new Set((orders || []).map(o => o.store_id).filter(id => id))];
@@ -113,13 +130,23 @@ export default function CourierDashboard() {
       
       // Gabungkan data
       const enriched = assignments.map(assignment => {
-        const order = orders?.find(o => o.id === assignment.order_id);
-        const store = order ? storesMap.get(order.store_id) : null;
-        return {
-          ...assignment,
-          orders: order ? { ...order, stores: store } : null
-        };
-      });
+  const order = orders?.find(o => o.id === assignment.order_id);
+  const store = order ? storesMap.get(order.store_id) : null;
+  const member = order?.member_id ? membersMap.get(order.member_id) : null;
+  
+  // Gabungkan data member ke dalam order
+  const enrichedOrder = order ? { 
+    ...order, 
+    stores: store,
+    customer_name: member?.full_name || order.guest_name,
+    customer_phone: member?.phone || order.guest_phone
+  } : null;
+  
+  return {
+    ...assignment,
+    orders: enrichedOrder
+  };
+});
       
       setAssignments(enriched);
       
@@ -395,43 +422,50 @@ export default function CourierDashboard() {
                   </button>
                   
                   {expandedDelivery === delivery.id && (
-                    <div className="p-4 pt-0 border-t border-white/10 space-y-3">
-                      {/* Info Order */}
-                      <div className="bg-gray-800/50 rounded-lg p-3">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-gray-400">Total:</span>
-                          <span className="text-yellow-500">Rp {delivery.orders?.total_amount?.toLocaleString()}</span>
-                        </div>
-                        <div className="text-sm mb-1">
-                          <span className="text-gray-400">Alamat:</span>
-                          <p className="text-xs text-gray-300 mt-1">{delivery.orders?.shipping_address}</p>
-                        </div>
-                      </div>
-                      
-                      {/* Info Barang (Produk) */}
-                      {delivery.orders?.order_items && delivery.orders.order_items.length > 0 && (
-                        <div className="bg-gray-800/50 rounded-lg p-3">
-                          <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
-                          <div className="space-y-1">
-                            {delivery.orders.order_items.map((item, idx) => (
-                              <div key={idx} className="flex justify-between text-xs">
-                                <span>{item.product_name} x{item.quantity}</span>
-                                <span className="text-yellow-500">Rp {item.total?.toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Info Pemesan */}
-                      <div className="bg-gray-800/50 rounded-lg p-3">
-                        <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
-                        <p className="text-xs">Nama: {delivery.orders?.guest_name || '-'}</p>
-                        <p className="text-xs">No. HP: {delivery.orders?.guest_phone || '-'}</p>
-                        {delivery.orders?.notes && (
-                          <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
-                        )}
-                      </div>
+  <div className="p-4 pt-0 border-t border-white/10 space-y-3">
+    
+    {/* 1. BARANG DIPESAN + ONGKIR + TOTAL */}
+    <div className="bg-gray-800/50 rounded-lg p-3">
+      <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
+      <div className="space-y-1">
+        {delivery.orders?.order_items && delivery.orders.order_items.length > 0 ? (
+          delivery.orders.order_items.map((item, idx) => (
+            <div key={idx} className="flex justify-between text-xs">
+              <span>{item.product_name} x{item.quantity}</span>
+              <span className="text-yellow-500">Rp {item.total?.toLocaleString()}</span>
+            </div>
+          ))
+        ) : (
+          <p className="text-xs text-gray-500">-</p>
+        )}
+      </div>
+      <div className="border-t border-white/10 mt-2 pt-2">
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-400">Ongkos Kirim:</span>
+          <span>Rp {(delivery.orders?.shipping_cost || 0).toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between text-sm font-semibold mt-1">
+          <span>Total:</span>
+          <span className="text-yellow-500">Rp {(delivery.orders?.total_amount || 0).toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+    
+    {/* 2. ALAMAT PENGIRIMAN */}
+    <div className="bg-gray-800/50 rounded-lg p-3">
+      <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman:</h4>
+      <p className="text-xs">{delivery.orders?.shipping_address || '-'}</p>
+    </div>
+    
+    {/* 3. INFO PEMESAN */}
+    <div className="bg-gray-800/50 rounded-lg p-3">
+      <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
+      <p className="text-xs">Nama: {delivery.orders?.customer_name || '-'}</p>
+      <p className="text-xs">No. HP: {delivery.orders?.customer_phone || '-'}</p>
+      {delivery.orders?.notes && (
+        <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
+      )}
+    </div>
                       
                       {/* Tombol Aksi */}
                       <div className="space-y-2">
