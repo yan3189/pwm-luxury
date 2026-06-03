@@ -7,6 +7,7 @@ import {
   Package, MapPin, Truck, CheckCircle, Clock, 
   Navigation, Phone, LogOut, Play, StopCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
+import SlideToConfirm from '../components/SlideToConfirm';
 
 export default function CourierDashboard() {
   const [user, setUser] = useState(null);
@@ -69,11 +70,28 @@ export default function CourierDashboard() {
         return;
       }
       
-      // Ambil orders
+      // Ambil orders dengan order_items
       const orderIds = assignments.map(a => a.order_id);
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, order_number, total_amount, shipping_address, shipping_latitude, shipping_longitude, guest_name, guest_phone, notes, store_id, status')
+        .select(`
+          id, 
+          order_number, 
+          total_amount, 
+          shipping_address, 
+          shipping_latitude, 
+          shipping_longitude, 
+          guest_name, 
+          guest_phone, 
+          notes, 
+          store_id, 
+          status,
+          order_items (
+            product_name,
+            quantity,
+            total
+          )
+        `)
         .in('id', orderIds);
       
       if (ordersError) throw ordersError;
@@ -124,7 +142,7 @@ export default function CourierDashboard() {
     setLoading(false);
   };
 
-  // ========== TRACKING GPS ==========
+  // ========== TRACKING GPS (Interval 10 detik) ==========
   const startTracking = async (deliveryId) => {
     const delivery = assignments.find(a => a.id === deliveryId);
     if (!delivery) return;
@@ -140,35 +158,45 @@ export default function CourierDashboard() {
       return;
     }
     
-    const id = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude, heading } = position.coords;
-        
-        const channel = supabase.channel(`tracking:${deliveryId}`);
-        await channel.send({
-          type: 'broadcast',
-          event: 'location-update',
-          payload: { lat: latitude, lng: longitude, heading: heading || 0, timestamp: new Date().toISOString() }
-        });
-        
-        await supabase.from('tracking_points').insert({
-          delivery_id: deliveryId,
-          latitude, longitude,
-          recorded_at: new Date().toISOString()
-        });
-        
-        console.log('📍 Location sent:', latitude, longitude);
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        if (error.code === 1) alert('Izin lokasi ditolak.');
-        else if (error.code === 2) alert('Lokasi tidak tersedia.');
-        else if (error.code === 3) alert('Timeout获取 lokasi.');
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-    );
+    let intervalId = null;
     
-    setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: id, active: true } }));
+    const sendLocation = async () => {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude, heading } = position.coords;
+          
+          const channel = supabase.channel(`tracking:${deliveryId}`);
+          await channel.send({
+            type: 'broadcast',
+            event: 'location-update',
+            payload: { lat: latitude, lng: longitude, heading: heading || 0, timestamp: new Date().toISOString() }
+          });
+          
+          await supabase.from('tracking_points').insert({
+            delivery_id: deliveryId,
+            latitude, longitude,
+            recorded_at: new Date().toISOString()
+          });
+          
+          console.log('📍 Location sent (10s interval):', latitude, longitude);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+    
+    // Kirim lokasi pertama kali
+    await sendLocation();
+    
+    // Set interval setiap 10 detik (10000 ms)
+    intervalId = setInterval(sendLocation, 10000);
+    
+    setTrackingStates(prev => ({ 
+      ...prev, 
+      [deliveryId]: { intervalId, active: true } 
+    }));
     
     // Broadcast status aktif
     try {
@@ -190,9 +218,9 @@ export default function CourierDashboard() {
   
   const stopTracking = (deliveryId) => {
     const state = trackingStates[deliveryId];
-    if (state?.watchId) {
-      navigator.geolocation.clearWatch(state.watchId);
-      setTrackingStates(prev => ({ ...prev, [deliveryId]: { watchId: null, active: false } }));
+    if (state?.intervalId) {
+      clearInterval(state.intervalId);
+      setTrackingStates(prev => ({ ...prev, [deliveryId]: { intervalId: null, active: false } }));
       
       // Broadcast status tidak aktif
       (async () => {
@@ -222,57 +250,54 @@ export default function CourierDashboard() {
     if (newStatus === 'on_delivery' && !delivery.started_at) {
       updates.started_at = new Date().toISOString();
       
-    if (newStatus === 'on_delivery' && !delivery.started_at) {
-  updates.started_at = new Date().toISOString();
-  
-  console.log('===== START ROUTE: Getting current position... =====');
-  try {
-    const getCurrentPosition = () => new Promise((resolve, reject) => {
-      if (!navigator.geolocation) reject('Geolocation not supported');
-      navigator.geolocation.getCurrentPosition(resolve, reject, { 
-        enableHighAccuracy: true, 
-        timeout: 10000 
-      });
-    });
-    
-    const position = await getCurrentPosition();
-    const courierLat = position.coords.latitude;
-    const courierLng = position.coords.longitude;
-    const destLat = delivery.orders?.shipping_latitude;
-    const destLng = delivery.orders?.shipping_longitude;
-    
-    console.log('📍 Courier position:', courierLat, courierLng);
-    console.log('📍 Destination:', destLat, destLng);
-    
-    if (destLat && destLng) {
-      console.log('📡 Calling route-from-current API...');
-      const response = await fetch('/api/shipping/route-from-current', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courierLat,
-          courierLng,
-          destinationLat: destLat,
-          destinationLng: destLng,
-          storeId: delivery.orders?.store_id
-        })
-      });
-      const data = await response.json();
-      console.log('📡 Route API response:', data);
-      
-      if (data.success) {
-        updates.start_route_polyline = data.polyline;
-        updates.start_distance_meters = data.distanceMeters;
-        updates.start_duration_seconds = data.durationSeconds;
-        console.log('✅ Start route saved, polyline length:', data.polyline?.length);
-      } else {
-        console.error('❌ Route API failed:', data.error);
+      // ===== HITUNG RUTE DARI POSISI KURIR SAAT INI =====
+      console.log('===== CALCULATING START ROUTE =====');
+      try {
+        const getCurrentPosition = () => new Promise((resolve, reject) => {
+          if (!navigator.geolocation) reject('Geolocation not supported');
+          navigator.geolocation.getCurrentPosition(resolve, reject, { 
+            enableHighAccuracy: true, 
+            timeout: 10000 
+          });
+        });
+        
+        const position = await getCurrentPosition();
+        const courierLat = position.coords.latitude;
+        const courierLng = position.coords.longitude;
+        const destLat = delivery.orders?.shipping_latitude;
+        const destLng = delivery.orders?.shipping_longitude;
+        
+        console.log('📍 Start route from:', courierLat, courierLng);
+        console.log('📍 Destination:', destLat, destLng);
+        
+        if (destLat && destLng) {
+          const response = await fetch('/api/shipping/route-from-current', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              courierLat,
+              courierLng,
+              destinationLat: destLat,
+              destinationLng: destLng,
+              storeId: delivery.orders?.store_id
+            })
+          });
+          const data = await response.json();
+          console.log('Route API response:', data);
+          
+          if (data.success) {
+            updates.start_route_polyline = data.polyline;
+            updates.start_distance_meters = data.distanceMeters;
+            updates.start_duration_seconds = data.durationSeconds;
+            console.log('✅ Start route saved, polyline length:', data.polyline?.length);
+          } else {
+            console.error('Route API failed:', data.error);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to get start route:', err);
       }
     }
-  } catch (err) {
-    console.error('❌ Failed to get start route:', err);
-  }
-}}
     
     if (newStatus === 'completed') {
       updates.completed_at = new Date().toISOString();
@@ -381,16 +406,30 @@ export default function CourierDashboard() {
                           <span className="text-gray-400">Alamat:</span>
                           <p className="text-xs text-gray-300 mt-1">{delivery.orders?.shipping_address}</p>
                         </div>
-                        {delivery.orders?.guest_name && (
-                          <div className="text-sm">
-                            <span className="text-gray-400">Penerima:</span>
-                            <span className="ml-2">{delivery.orders.guest_name}</span>
-                            {delivery.orders.guest_phone && (
-                              <a href={`tel:${delivery.orders.guest_phone}`} className="ml-2 text-blue-400">
-                                <Phone size={12} className="inline" /> {delivery.orders.guest_phone}
-                              </a>
-                            )}
+                      </div>
+                      
+                      {/* Info Barang (Produk) */}
+                      {delivery.orders?.order_items && delivery.orders.order_items.length > 0 && (
+                        <div className="bg-gray-800/50 rounded-lg p-3">
+                          <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
+                          <div className="space-y-1">
+                            {delivery.orders.order_items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-xs">
+                                <span>{item.product_name} x{item.quantity}</span>
+                                <span className="text-yellow-500">Rp {item.total?.toLocaleString()}</span>
+                              </div>
+                            ))}
                           </div>
+                        </div>
+                      )}
+                      
+                      {/* Info Pemesan */}
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
+                        <p className="text-xs">Nama: {delivery.orders?.guest_name || '-'}</p>
+                        <p className="text-xs">No. HP: {delivery.orders?.guest_phone || '-'}</p>
+                        {delivery.orders?.notes && (
+                          <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
                         )}
                       </div>
                       
@@ -444,12 +483,11 @@ export default function CourierDashboard() {
                         )}
                         
                         {delivery.status === 'on_delivery' && (
-                          <button
-                            onClick={() => updateDeliveryStatus(delivery.id, 'completed')}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle size={16} /> Tandai Selesai
-                          </button>
+                          <SlideToConfirm
+                            onConfirm={() => updateDeliveryStatus(delivery.id, 'completed')}
+                            text="Geser ke kanan untuk menyelesaikan pengiriman"
+                            disabled={processingDelivery === delivery.id}
+                          />
                         )}
                       </div>
                       
