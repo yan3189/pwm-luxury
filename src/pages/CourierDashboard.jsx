@@ -222,54 +222,57 @@ export default function CourierDashboard() {
     if (newStatus === 'on_delivery' && !delivery.started_at) {
       updates.started_at = new Date().toISOString();
       
-      // ===== HITUNG RUTE DARI POSISI KURIR SAAT INI =====
-      console.log('===== CALCULATING START ROUTE =====');
-      try {
-        const getCurrentPosition = () => new Promise((resolve, reject) => {
-          if (!navigator.geolocation) reject('Geolocation not supported');
-          navigator.geolocation.getCurrentPosition(resolve, reject, { 
-            enableHighAccuracy: true, 
-            timeout: 10000 
-          });
-        });
-        
-        const position = await getCurrentPosition();
-        const courierLat = position.coords.latitude;
-        const courierLng = position.coords.longitude;
-        const destLat = delivery.orders?.shipping_latitude;
-        const destLng = delivery.orders?.shipping_longitude;
-        
-        console.log('📍 Start route from:', courierLat, courierLng);
-        console.log('📍 Destination:', destLat, destLng);
-        
-        if (destLat && destLng) {
-          const response = await fetch('/api/shipping/route-from-current', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              courierLat,
-              courierLng,
-              destinationLat: destLat,
-              destinationLng: destLng,
-              storeId: delivery.orders?.store_id
-            })
-          });
-          const data = await response.json();
-          console.log('Route API response:', data);
-          
-          if (data.success) {
-            updates.start_route_polyline = data.polyline;
-            updates.start_distance_meters = data.distanceMeters;
-            updates.start_duration_seconds = data.durationSeconds;
-            console.log('✅ Start route saved, polyline length:', data.polyline?.length);
-          } else {
-            console.error('Route API failed:', data.error);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to get start route:', err);
+    if (newStatus === 'on_delivery' && !delivery.started_at) {
+  updates.started_at = new Date().toISOString();
+  
+  console.log('===== START ROUTE: Getting current position... =====');
+  try {
+    const getCurrentPosition = () => new Promise((resolve, reject) => {
+      if (!navigator.geolocation) reject('Geolocation not supported');
+      navigator.geolocation.getCurrentPosition(resolve, reject, { 
+        enableHighAccuracy: true, 
+        timeout: 10000 
+      });
+    });
+    
+    const position = await getCurrentPosition();
+    const courierLat = position.coords.latitude;
+    const courierLng = position.coords.longitude;
+    const destLat = delivery.orders?.shipping_latitude;
+    const destLng = delivery.orders?.shipping_longitude;
+    
+    console.log('📍 Courier position:', courierLat, courierLng);
+    console.log('📍 Destination:', destLat, destLng);
+    
+    if (destLat && destLng) {
+      console.log('📡 Calling route-from-current API...');
+      const response = await fetch('/api/shipping/route-from-current', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courierLat,
+          courierLng,
+          destinationLat: destLat,
+          destinationLng: destLng,
+          storeId: delivery.orders?.store_id
+        })
+      });
+      const data = await response.json();
+      console.log('📡 Route API response:', data);
+      
+      if (data.success) {
+        updates.start_route_polyline = data.polyline;
+        updates.start_distance_meters = data.distanceMeters;
+        updates.start_duration_seconds = data.durationSeconds;
+        console.log('✅ Start route saved, polyline length:', data.polyline?.length);
+      } else {
+        console.error('❌ Route API failed:', data.error);
       }
     }
+  } catch (err) {
+    console.error('❌ Failed to get start route:', err);
+  }
+}}
     
     if (newStatus === 'completed') {
       updates.completed_at = new Date().toISOString();

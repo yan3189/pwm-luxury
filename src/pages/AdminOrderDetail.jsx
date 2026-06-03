@@ -126,25 +126,16 @@ const [eta, setEta] = useState(null);
       }
     }
     
-    // ========== AMBIL POLYLINE (PRIORITAS START ROUTE DARI DELIVERY) ==========
+// ========== AMBIL POLYLINE (PRIORITAS START ROUTE DARI DELIVERY) ==========
 console.log('🔍 Mencari polyline...');
-console.log('storeData:', storeData?.id);
-console.log('orderData.shipping_latitude:', orderData.shipping_latitude);
-console.log('orderData.address_id:', orderData.address_id);
 console.log('delivery?.start_route_polyline exists?', !!delivery?.start_route_polyline);
 
-// PRIORITAS 1: Gunakan start_route_polyline dari delivery (jika ada)
 if (delivery?.start_route_polyline) {
   console.log('✅ Using start route polyline from delivery');
   setRoutePolyline(delivery.start_route_polyline);
-} 
-// PRIORITAS 2: Cari dari cache berdasarkan address_id
-else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+} else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
   let addressId = orderData.address_id;
-  
-  // Jika tidak ada address_id, cari di member_addresses
   if (!addressId && orderData.shipping_address) {
-    console.log('Mencari address_id dari shipping_address...');
     const { data: addrData } = await supabase
       .from('member_addresses')
       .select('id')
@@ -165,17 +156,9 @@ else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_lo
     if (cacheData?.polyline) {
       console.log('✅ Polyline ditemukan di cache');
       setRoutePolyline(cacheData.polyline);
-    } else {
-      console.log('❌ Polyline tidak ditemukan di cache');
     }
-  } else {
-    console.log('❌ Tidak ada address_id yang valid');
   }
-} else {
-  console.log('❌ Kondisi tidak terpenuhi: storeData atau orderData koordinat tidak lengkap');
-}
-// ============================================================
-    
+}   
     // Step 8: Ambil daftar kurir
     await fetchCouriers();
     
@@ -347,6 +330,26 @@ useEffect(() => {
       if (mapRef.current && lat && lng) {
         mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
       }
+
+      // Cek start_route_polyline dari delivery state saat ini
+  setDelivery(currentDelivery => {
+    if (currentDelivery && !currentDelivery.start_route_polyline) {
+      // Ambil data terbaru dari database
+      supabase
+        .from('delivery_assignments')
+        .select('start_route_polyline')
+        .eq('id', currentDelivery.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.start_route_polyline) {
+            setRoutePolyline(data.start_route_polyline);
+            return { ...currentDelivery, ...data };
+          }
+        })
+        .catch(err => console.error('Failed to fetch start route:', err));
+    }
+    return currentDelivery;
+  });
     })
     .on('broadcast', { event: 'tracking-status' }, (payload) => {
       if (!isMounted) return;
