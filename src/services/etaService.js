@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 const DEFAULT_ROAD_FACTOR = 1.25;
 const DEFAULT_TRAFFIC_FACTOR_NORMAL = 1.0;
 const DEFAULT_TRAFFIC_FACTOR_PEAK = 1.5;
-const DEFAULT_SPEED_NORMAL = 20; // km/h
+const DEFAULT_SPEED_NORMAL = 25; // km/h
 const DEFAULT_SPEED_PEAK = 15; // km/h
 
 /**

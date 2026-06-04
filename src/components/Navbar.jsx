@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Menu, X, User, Shield, LayoutDashboard, Download } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import GlobalSearch from './GlobalSearch';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -116,6 +117,9 @@ export default function Navbar() {
           <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
             PWM
           </Link>
+          <div className="hidden md:block w-80">
+          <GlobalSearch />
+          </div>
 
           {/* Desktop Menu dengan efek kotak & sliding */}
           <div className="hidden md:flex items-center gap-2">
@@ -137,9 +141,7 @@ export default function Navbar() {
               <span className="relative z-10">Admin</span>
               <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
             </Link>
-            <Link to="/cart" className="flex items-center gap-1 hover:text-yellow-400 transition">
-  🛒 Cart
-</Link>
+            
             {/* Install App button - paling bawah */}
             {showInstallBtn && (
               <button
@@ -182,9 +184,7 @@ export default function Navbar() {
             >
               Admin
             </Link>
-            <Link to="/cart" className="flex items-center gap-1 hover:text-yellow-400 transition">
-  🛒 Cart
-</Link>
+            
             {showInstallBtn && (
               <button
                 onClick={() => { handleInstallClick(); setIsOpen(false); }}

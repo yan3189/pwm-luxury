@@ -1,14 +1,16 @@
 // ========== FILE: src/pages/StorePage.jsx ==========
-// Halaman publik store dengan tab: Semua Produk, Kategori, Diskon, Favorit + Artikel
+// Halaman publik store dengan tab: Semua Produk, Kategori, Diskon, Favorit + Local Search
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Navbar from '../components/Navbar'
 import FloatingCart from '../components/FloatingCart'
+import LocalSearch from '../components/LocalSearch'
 import { addToCart as addToCartService } from '../services/cartService'
 
 export default function StorePage() {
   const { slug } = useParams()
+  const [searchParams] = useSearchParams()
   const [store, setStore] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -20,17 +22,33 @@ export default function StorePage() {
   const [categoryProducts, setCategoryProducts] = useState({})
   const [storeCategories, setStoreCategories] = useState([])
   
-  // Data artikel
-  const [storeNews, setStoreNews] = useState([])
-  
   // Tab aktif
   const [activeTab, setActiveTab] = useState('all')
+  
+  // Search state
+  const [filteredProducts, setFilteredProducts] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
 
   useEffect(() => {
     if (slug) {
       fetchStore()
     }
   }, [slug])
+
+  // Scroll ke produk jika ada query parameter ?product=xxx
+  useEffect(() => {
+    const productId = searchParams.get('product')
+    if (productId && !loading) {
+      const element = document.getElementById(`product-${productId}`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        element.classList.add('bg-yellow-500/20')
+        setTimeout(() => {
+          element.classList.remove('bg-yellow-500/20')
+        }, 2000)
+      }
+    }
+  }, [searchParams, loading])
 
   const fetchStore = async () => {
     setLoading(true)
@@ -101,18 +119,6 @@ export default function StorePage() {
     }
     setStoreCategories(categories || [])
     
-    // Ambil artikel store
-    const { data: newsData, error: newsError } = await supabase
-      .from('news')
-      .select('*')
-      .eq('store_id', storeData.id)
-      .order('published_at', { ascending: false })
-    
-    if (newsError) {
-      console.error('Error fetching news:', newsError)
-    }
-    setStoreNews(newsData || [])
-    
     setLoading(false)
   }
 
@@ -126,7 +132,20 @@ export default function StorePage() {
     }
   }
 
-  // Fungsi render produk
+  // Handle search results
+  const handleSearchResults = (results) => {
+    setFilteredProducts(results)
+    setIsSearching(true)
+    // Set tab ke 'all' agar search results tampil
+    setActiveTab('all')
+  }
+
+  const handleClearSearch = () => {
+    setFilteredProducts([])
+    setIsSearching(false)
+  }
+
+  // Fungsi render produk (grid)
   const renderProducts = (productsToRender) => {
     if (!productsToRender || productsToRender.length === 0) {
       return <div className="text-center text-gray-500 py-12">Belum ada produk.</div>
@@ -134,7 +153,11 @@ export default function StorePage() {
     return (
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
         {productsToRender.map(p => (
-          <div key={p.id} className="bg-gray-900/50 rounded-xl p-3 hover:scale-105 transition-transform duration-300">
+          <div 
+            key={p.id} 
+            id={`product-${p.id}`}
+            className="bg-gray-900/50 rounded-xl p-3 hover:scale-105 transition-transform duration-300"
+          >
             <img 
               src={p.image_url || 'https://placehold.co/400x300'} 
               className="w-full h-32 md:h-40 object-cover rounded-lg mb-2" 
@@ -186,6 +209,9 @@ export default function StorePage() {
     )
   }
 
+  // Tentukan produk yang akan ditampilkan (search results atau original)
+  const displayProducts = isSearching ? filteredProducts : allProducts
+
   return (
     <div className="bg-black text-white min-h-screen">
       <Navbar />
@@ -208,8 +234,25 @@ export default function StorePage() {
         <h1 className="text-3xl font-display text-center">{store.name}</h1>
         <p className="text-gray-400 text-center mt-2">{store.description}</p>
         
+        {/* Local Search Bar */}
+        <div className="max-w-md mx-auto mt-4 mb-6">
+          <LocalSearch 
+            storeId={store.id} 
+            onResults={handleSearchResults}
+            onClear={handleClearSearch}
+          />
+          {isSearching && (
+            <button 
+              onClick={handleClearSearch}
+              className="text-xs text-yellow-500 hover:underline mt-1 block text-center"
+            >
+              Hapus pencarian
+            </button>
+          )}
+        </div>
+        
         {/* ========== TAB NAVIGATION ========== */}
-        <div className="flex border-b border-white/10 mt-8 mb-6 overflow-x-auto">
+        <div className="flex border-b border-white/10 mt-4 mb-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('all')}
             className={`py-3 px-6 font-semibold text-sm md:text-base transition-all relative whitespace-nowrap ${
@@ -259,49 +302,28 @@ export default function StorePage() {
         </div>
         
         {/* ========== TAB CONTENT ========== */}
-        {activeTab === 'all' && renderProducts(allProducts)}
-        
-        {storeCategories.map(cat => (
-          activeTab === `cat_${cat.master_categories.id}` && renderProducts(categoryProducts[cat.master_categories.id] || [])
-        ))}
-        
-        {activeTab === 'discount' && renderProducts(discountProducts)}
-        
-        {activeTab === 'featured' && renderProducts(featuredProducts)}
+        {!isSearching ? (
+          <>
+            {activeTab === 'all' && renderProducts(displayProducts)}
+            {storeCategories.map(cat => (
+              activeTab === `cat_${cat.master_categories.id}` && renderProducts(categoryProducts[cat.master_categories.id] || [])
+            ))}
+            {activeTab === 'discount' && renderProducts(discountProducts)}
+            {activeTab === 'featured' && renderProducts(featuredProducts)}
+          </>
+        ) : (
+          renderProducts(displayProducts)
+        )}
         
         {/* ========== ARTIKEL & PROMO ========== */}
         <div className="mt-12">
           <div className="flex border-b border-white/10 mb-6">
             <h2 className="text-xl font-display text-yellow-500 pb-2 border-b-2 border-yellow-500">Artikel & Promo</h2>
           </div>
-          
-          {storeNews.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Belum ada artikel atau promo.</p>
-          ) : (
-            <div className="space-y-6">
-              {storeNews.map(item => (
-                <div key={item.id} className="bg-gray-900/50 rounded-xl p-5 border border-white/10 hover:border-yellow-500/30 transition">
-                  {item.image_url && (
-                    <img 
-                      src={item.image_url} 
-                      alt={item.title} 
-                      className="w-full h-48 md:h-56 object-cover rounded-lg mb-4" 
-                    />
-                  )}
-                  <h3 className="text-xl md:text-2xl font-display font-bold">{item.title}</h3>
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mt-2">
-                    <span>{new Date(item.published_at).toLocaleDateString('id-ID')}</span>
-                  </div>
-                  <p className="text-gray-300 mt-3">{item.excerpt || item.content?.substring(0, 200)}</p>
-                  {item.content && item.content.length > 200 && (
-                    <button className="mt-2 text-yellow-500 text-sm hover:underline">
-                      Baca selengkapnya
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="space-y-4">
+            {/* Artikel store akan ditampilkan di sini */}
+            <p className="text-gray-500 text-center py-4">Belum ada artikel.</p>
+          </div>
         </div>
       </div>
       
