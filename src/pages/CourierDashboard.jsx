@@ -138,14 +138,14 @@ const enriched = assignments.map(assignment => {
   let customerName = 'Guest';
   let customerPhone = '-';
   
-  if (order?.member_id && member) {
-    // Member: ambil dari data member
-    customerName = member.full_name || 'Member';
-    customerPhone = member.phone || '-';
-  } else if (order?.guest_name) {
-    // Guest: ambil dari order
-    customerName = order.guest_name;
-    customerPhone = order.guest_phone || '-';
+  if (order?.guest_name) {
+  // Guest: ambil dari order
+  customerName = order.guest_name;
+  customerPhone = order.guest_phone || '-';
+} else if (member) {
+  // Member: ambil dari data member
+  customerName = member.full_name || 'Member';
+  customerPhone = member.phone || '-';
   }
   
   const enrichedOrder = order ? { 
