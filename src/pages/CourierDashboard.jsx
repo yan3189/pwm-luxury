@@ -129,17 +129,30 @@ if (memberIds.length > 0) {
       }
       
       // Gabungkan data
-      const enriched = assignments.map(assignment => {
+const enriched = assignments.map(assignment => {
   const order = orders?.find(o => o.id === assignment.order_id);
   const store = order ? storesMap.get(order.store_id) : null;
   const member = order?.member_id ? membersMap.get(order.member_id) : null;
   
-  // Gabungkan data member ke dalam order
+  // Prioritas: guest_name untuk guest, member untuk member
+  let customerName = 'Guest';
+  let customerPhone = '-';
+  
+  if (order?.member_id && member) {
+    // Member: ambil dari data member
+    customerName = member.full_name || 'Member';
+    customerPhone = member.phone || '-';
+  } else if (order?.guest_name) {
+    // Guest: ambil dari order
+    customerName = order.guest_name;
+    customerPhone = order.guest_phone || '-';
+  }
+  
   const enrichedOrder = order ? { 
     ...order, 
     stores: store,
-   customer_name: order.guest_name || order.member?.full_name || 'Guest',
-  customer_phone: order.guest_phone || order.member?.phone || '-'
+    customer_name: customerName,
+    customer_phone: customerPhone
   } : null;
   
   return {
