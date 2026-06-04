@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { 
   Package, MapPin, Truck, CheckCircle, Clock, 
-  Navigation, Phone, LogOut, Play, StopCircle, ChevronDown, ChevronUp
+  Navigation, Phone, LogOut, Play, StopCircle, ChevronDown, ChevronUp, MessageCircle
 } from 'lucide-react';
 import SlideToConfirm from '../components/SlideToConfirm';
 
@@ -138,8 +138,8 @@ if (memberIds.length > 0) {
   const enrichedOrder = order ? { 
     ...order, 
     stores: store,
-    customer_name: member?.full_name || order.guest_name,
-    customer_phone: member?.phone || order.guest_phone
+   customer_name: order.guest_name || order.member?.full_name || 'Guest',
+  customer_phone: order.guest_phone || order.member?.phone || '-'
   } : null;
   
   return {
@@ -457,13 +457,13 @@ if (memberIds.length > 0) {
       <p className="text-xs">{delivery.orders?.shipping_address || '-'}</p>
     </div>
     
-    {/* 3. INFO PEMESAN + TOMBOL WA */}
+  {/* 3. INFO PEMESAN + TOMBOL WA */}
 <div className="bg-gray-800/50 rounded-lg p-3">
   <div className="flex justify-between items-center">
     <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
-    {delivery.orders?.customer_phone && (
+    {delivery.orders?.customer_phone && delivery.orders.customer_phone !== '-' && (
       <a
-        href={`https://wa.me/${delivery.orders.customer_phone.replace(/[^0-9]/g, '')}?text=Halo%20kak,%20saya%20kurir%20dari%20${store?.name || 'PWM'}%20sedang%20mengantarkan%20pesanan%20anda%20dengan%20nomor%20%23${delivery.orders.order_number}.%20Mohon%20disediakan%20waktunya.`}
+        href={`https://wa.me/${delivery.orders.customer_phone.replace(/[^0-9]/g, '')}?text=Halo%20kak,%20saya%20kurir%20dari%20${delivery.orders?.stores?.name || 'PWM'}%20sedang%20mengantarkan%20pesanan%20anda%20dengan%20nomor%20%23${delivery.orders.order_number}.%20Mohon%20disediakan%20waktunya.`}
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded-full text-xs hover:bg-green-500/30 transition"

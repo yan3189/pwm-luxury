@@ -5,53 +5,42 @@ import { supabase } from '../lib/supabase';
  * Mendapatkan atau membuat user guest berdasarkan session_id
  */
 export async function getOrCreateGuestUser() {
-  // Dapatkan atau buat session_id di localStorage
   let sessionId = localStorage.getItem('guest_session_id');
   if (!sessionId) {
     sessionId = crypto.randomUUID();
     localStorage.setItem('guest_session_id', sessionId);
   }
   
-  // Cek apakah sudah ada user guest dengan session_id ini
-  const { data: existing, error: findError } = await supabase
+  const { data: existing } = await supabase
     .from('users')
-    .select('id, role, full_name')
+    .select('id, role')
     .eq('session_id', sessionId)
     .maybeSingle();
   
-  if (findError && findError.code !== 'PGRST116') {
-    console.error('Error finding guest:', findError);
-  }
+  if (existing) return existing;
   
-  if (existing) {
-    console.log('Existing guest user found:', existing.id);
-    return existing;
-  }
-  
-  // Buat user guest baru
   const tempEmail = `guest_${sessionId.slice(0, 8)}@temp.pwm.com`;
   
-  const { data: newUser, error: insertError } = await supabase
+  const { data: newUser, error } = await supabase
     .from('users')
     .insert({
       session_id: sessionId,
       email: tempEmail,
       temp_email: tempEmail,
       role: 'guest',
-      full_name: 'Guest User',
+      full_name: null,  // TIDAK diisi
+      phone: null,      // TIDAK diisi
       points: 0
     })
     .select()
     .single();
   
-  if (insertError) {
-    console.error('Error creating guest user:', insertError);
-    throw insertError;
-  }
-  
-  console.log('New guest user created:', newUser.id);
+  if (error) throw error;
   return newUser;
 }
+
+// HAPUS fungsi saveGuestAddress (tidak perlu lagi)
+// HAPUS update guest user di CheckoutPage
 
 /**
  * Simpan alamat untuk guest (langsung ke member_addresses)
