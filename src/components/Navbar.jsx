@@ -117,9 +117,7 @@ export default function Navbar() {
           <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
             PWM
           </Link>
-          <div className="hidden md:block w-80">
-          <GlobalSearch />
-          </div>
+          
 
           {/* Desktop Menu dengan efek kotak & sliding */}
           <div className="hidden md:flex items-center gap-2">

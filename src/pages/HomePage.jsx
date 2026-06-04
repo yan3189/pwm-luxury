@@ -10,6 +10,7 @@ import { ArrowRight, Star, MapPin, ChevronRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import GlobalSearch from '../components/GlobalSearch';
 
 export default function HomeHolywings() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -72,7 +73,9 @@ useEffect(() => {
           
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
 
-        
+        <div className="mt-10 max-w-md mx-auto">
+  <GlobalSearch />
+</div>
             
           </div>
         </div>

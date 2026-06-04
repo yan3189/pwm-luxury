@@ -45,7 +45,7 @@ export default function StorePage() {
         element.classList.add('bg-yellow-500/20')
         setTimeout(() => {
           element.classList.remove('bg-yellow-500/20')
-        }, 2000)
+        }, 5000)
       }
     }
   }, [searchParams, loading])

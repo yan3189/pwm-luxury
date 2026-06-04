@@ -1,27 +1,36 @@
 // src/components/LocalSearch.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { searchStoreProducts } from '../services/searchService';
 
 export default function LocalSearch({ storeId, onResults, onClear }) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const debounceRef = useState(null)[0];
+  const debounceTimer = useRef(null);
 
   useEffect(() => {
-    if (!debounceRef) return;
-    
+    // Clear timer jika query berubah
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
     if (query.length >= 2) {
-      const timeoutId = setTimeout(async () => {
-        setLoading(true);
+      setLoading(true);
+      debounceTimer.current = setTimeout(async () => {
         const results = await searchStoreProducts(storeId, query);
         if (onResults) onResults(results);
         setLoading(false);
-      }, 300);
-      return () => clearTimeout(timeoutId);
+      }, 500);
     } else if (query.length === 0) {
       if (onClear) onClear();
+      setLoading(false);
     }
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
   }, [query, storeId]);
 
   return (
