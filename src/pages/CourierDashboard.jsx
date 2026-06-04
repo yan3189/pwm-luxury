@@ -457,15 +457,27 @@ if (memberIds.length > 0) {
       <p className="text-xs">{delivery.orders?.shipping_address || '-'}</p>
     </div>
     
-    {/* 3. INFO PEMESAN */}
-    <div className="bg-gray-800/50 rounded-lg p-3">
-      <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
-      <p className="text-xs">Nama: {delivery.orders?.customer_name || '-'}</p>
-      <p className="text-xs">No. HP: {delivery.orders?.customer_phone || '-'}</p>
-      {delivery.orders?.notes && (
-        <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
-      )}
-    </div>
+    {/* 3. INFO PEMESAN + TOMBOL WA */}
+<div className="bg-gray-800/50 rounded-lg p-3">
+  <div className="flex justify-between items-center">
+    <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
+    {delivery.orders?.customer_phone && (
+      <a
+        href={`https://wa.me/${delivery.orders.customer_phone.replace(/[^0-9]/g, '')}?text=Halo%20kak,%20saya%20kurir%20dari%20${store?.name || 'PWM'}%20sedang%20mengantarkan%20pesanan%20anda%20dengan%20nomor%20%23${delivery.orders.order_number}.%20Mohon%20disediakan%20waktunya.`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded-full text-xs hover:bg-green-500/30 transition"
+      >
+        <MessageCircle size={12} /> Hubungi Pemesan
+      </a>
+    )}
+  </div>
+  <p className="text-xs mt-1">Nama: {delivery.orders?.customer_name || 'Guest'}</p>
+  <p className="text-xs">No. HP: {delivery.orders?.customer_phone || '-'}</p>
+  {delivery.orders?.notes && (
+    <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
+  )}
+</div>
                       
                       {/* Tombol Aksi */}
                       <div className="space-y-2">
