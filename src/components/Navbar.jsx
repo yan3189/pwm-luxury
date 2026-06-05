@@ -109,13 +109,14 @@ export default function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 backdrop-blur-md bg-black/70 border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* ========== BARIS 1: Logo + Tombol Menu (Mobile) ========== */}
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent shrink-0">
             PWM
           </Link>
 
-          {/* Global Search - Desktop (di tengah) */}
+          {/* Desktop: Search bar di tengah */}
           <div className="hidden md:block flex-1 max-w-md mx-8">
             <GlobalSearch />
           </div>
@@ -150,21 +151,22 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu button (hanya tombol, search terpisah) */}
           <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white">
             {isOpen ? <X /> : <Menu />}
           </button>
         </div>
+
+        {/* ========== BARIS 2: Search Bar (Mobile Only) ========== */}
+        <div className="md:hidden py-3 border-t border-white/10">
+          <GlobalSearch />
+        </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu (Dropdown) */}
       {isOpen && (
         <div className="md:hidden bg-black/95 backdrop-blur-lg border-t border-white/10">
           <div className="px-4 py-4 space-y-3">
-            {/* Search di mobile */}
-            <div className="mb-2">
-              <GlobalSearch />
-            </div>
             {menuItems.map((item) => (
               <Link
                 key={item.path}
