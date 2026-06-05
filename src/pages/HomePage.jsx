@@ -73,9 +73,6 @@ useEffect(() => {
           
           <div className="mt-10 flex flex-col sm:flex-row gap-5 justify-center">
 
-        <div className="mt-10 max-w-md mx-auto">
-  <GlobalSearch />
-</div>
             
           </div>
         </div>

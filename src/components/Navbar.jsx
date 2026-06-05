@@ -1,5 +1,4 @@
 // ========== FILE: src/components/Navbar.jsx ==========
-// Navbar dengan tombol login/daftar gabung, efek kotak & sliding highlight
 import { useState, useEffect } from 'react';
 import { Menu, X, User, Shield, LayoutDashboard, Download } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -78,7 +77,6 @@ export default function Navbar() {
     navigate('/');
   };
 
-  // Menu items (urutkan: Home, Stores, Events, News, lalu setelah login/daftar, Install App di paling bawah)
   const menuItems = [
     { label: 'Home', path: '/' },
     { label: 'Stores', path: '/stores' },
@@ -86,7 +84,6 @@ export default function Navbar() {
     { label: 'News', path: '/news' },
   ];
 
-  // Tombol member (login/daftar atau dashboard)
   const MemberButton = () => {
     if (isLoggedIn) {
       return (
@@ -114,12 +111,16 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+          <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent shrink-0">
             PWM
           </Link>
-          
 
-          {/* Desktop Menu dengan efek kotak & sliding */}
+          {/* Global Search - Desktop (di tengah) */}
+          <div className="hidden md:block flex-1 max-w-md mx-8">
+            <GlobalSearch />
+          </div>
+
+          {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-2">
             {menuItems.map((item) => (
               <Link
@@ -139,8 +140,6 @@ export default function Navbar() {
               <span className="relative z-10">Admin</span>
               <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
             </Link>
-            
-            {/* Install App button - paling bawah */}
             {showInstallBtn && (
               <button
                 onClick={handleInstallClick}
@@ -158,10 +157,14 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Menu - juga dengan efek kotak dan Install App di bawah */}
+      {/* Mobile Menu */}
       {isOpen && (
         <div className="md:hidden bg-black/95 backdrop-blur-lg border-t border-white/10">
           <div className="px-4 py-4 space-y-3">
+            {/* Search di mobile */}
+            <div className="mb-2">
+              <GlobalSearch />
+            </div>
             {menuItems.map((item) => (
               <Link
                 key={item.path}
@@ -182,7 +185,6 @@ export default function Navbar() {
             >
               Admin
             </Link>
-            
             {showInstallBtn && (
               <button
                 onClick={() => { handleInstallClick(); setIsOpen(false); }}
@@ -191,7 +193,6 @@ export default function Navbar() {
                 <Download size={16} /> Install App
               </button>
             )}
-            
           </div>
         </div>
       )}

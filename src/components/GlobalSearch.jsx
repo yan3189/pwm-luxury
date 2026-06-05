@@ -56,7 +56,7 @@ export default function GlobalSearch() {
   const totalResults = results.products.length + results.stores.length + results.articles.length;
 
   return (
-    <div ref={searchRef} className="relative w-full max-w-md">
+    <div ref={searchRef} className="relative w-full">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
         <input
