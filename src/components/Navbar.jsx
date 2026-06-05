@@ -109,57 +109,55 @@ export default function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 backdrop-blur-md bg-black/70 border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* ========== BARIS 1: Logo + Tombol Menu (Mobile) ========== */}
-        <div className="flex justify-between items-center h-16">
+        {/* ========== BARIS 1: Logo + Search + Tombol Menu ========== */}
+        <div className="flex justify-between items-center h-16 gap-3">
           {/* Logo */}
           <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent shrink-0">
             PWM
           </Link>
 
-          {/* Desktop: Search bar di tengah */}
-          <div className="hidden md:block flex-1 max-w-md mx-8">
+          {/* Search bar - flex grow untuk memenuhi ruang antara logo dan tombol menu */}
+          <div className="flex-1 max-w-md">
             <GlobalSearch />
           </div>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-2">
-            {menuItems.map((item) => (
+          {/* Tombol Menu (mobile) & Desktop Menu */}
+          <div className="flex items-center gap-2">
+            {/* Desktop Menu (hidden di mobile) */}
+            <div className="hidden md:flex items-center gap-2">
+              {menuItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className="relative px-4 py-2 rounded-lg text-sm font-medium text-white hover:text-yellow-400 transition-all duration-300 overflow-hidden group"
+                >
+                  <span className="relative z-10">{item.label}</span>
+                  <span className="absolute inset-0 bg-yellow-500/20 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
+                </Link>
+              ))}
+              <MemberButton />
               <Link
-                key={item.path}
-                to={item.path}
-                className="relative px-4 py-2 rounded-lg text-sm font-medium text-white hover:text-yellow-400 transition-all duration-300 overflow-hidden group"
+                to="/admin/login"
+                className="relative px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-yellow-400 transition group overflow-hidden"
               >
-                <span className="relative z-10">{item.label}</span>
-                <span className="absolute inset-0 bg-yellow-500/20 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
+                <span className="relative z-10">Admin</span>
+                <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
               </Link>
-            ))}
-            <MemberButton />
-            <Link
-              to="/admin/login"
-              className="relative px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-yellow-400 transition group overflow-hidden"
-            >
-              <span className="relative z-10">Admin</span>
-              <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
-            </Link>
-            {showInstallBtn && (
-              <button
-                onClick={handleInstallClick}
-                className="flex items-center gap-1 bg-yellow-500 text-black px-3 py-2 rounded-full text-sm font-medium hover:bg-yellow-400 transition"
-              >
-                <Download size={14} /> Install
-              </button>
-            )}
+              {showInstallBtn && (
+                <button
+                  onClick={handleInstallClick}
+                  className="flex items-center gap-1 bg-yellow-500 text-black px-3 py-2 rounded-full text-sm font-medium hover:bg-yellow-400 transition"
+                >
+                  <Download size={14} /> Install
+                </button>
+              )}
+            </div>
+
+            {/* Mobile menu button */}
+            <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white">
+              {isOpen ? <X /> : <Menu />}
+            </button>
           </div>
-
-          {/* Mobile menu button (hanya tombol, search terpisah) */}
-          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white">
-            {isOpen ? <X /> : <Menu />}
-          </button>
-        </div>
-
-        {/* ========== BARIS 2: Search Bar (Mobile Only) ========== */}
-        <div className="md:hidden py-3 border-t border-white/10">
-          <GlobalSearch />
         </div>
       </div>
 

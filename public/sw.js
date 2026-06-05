@@ -1,5 +1,5 @@
 // ========== FILE: public/sw.js ==========
-const CACHE_NAME = 'pwm-v2'; // Ganti versi setiap ada update besar
+const CACHE_NAME = 'pwm-v2.1'; // Ganti versi setiap ada update besar
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', event => {
