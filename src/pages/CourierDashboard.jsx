@@ -73,45 +73,45 @@ export default function CourierDashboard() {
       // Ambil orders dengan order_items
       const orderIds = assignments.map(a => a.order_id);
       const { data: orders, error: ordersError } = await supabase
-  .from('orders')
-  .select(`
-    id, 
-    order_number, 
-    total_amount, 
-    shipping_cost,
-    shipping_address, 
-    shipping_latitude, 
-    shipping_longitude, 
-    guest_name, 
-    guest_phone, 
-    notes, 
-    store_id, 
-    status,
-    member_id,
-    order_items (
-      product_name,
-      quantity,
-      total
-    )
-  `)
-  .in('id', orderIds);
+        .from('orders')
+        .select(`
+          id, 
+          order_number, 
+          total_amount, 
+          shipping_cost,
+          shipping_address, 
+          shipping_latitude, 
+          shipping_longitude, 
+          guest_name, 
+          guest_phone, 
+          notes, 
+          store_id, 
+          status,
+          member_id,
+          order_items (
+            product_name,
+            quantity,
+            total
+          )
+        `)
+        .in('id', orderIds);
       
       if (ordersError) throw ordersError;
 
       // Ambil data member untuk order yang memiliki member_id
-const memberIds = [...new Set((orders || []).filter(o => o.member_id).map(o => o.member_id))];
-let membersMap = new Map();
+      const memberIds = [...new Set((orders || []).filter(o => o.member_id).map(o => o.member_id))];
+      let membersMap = new Map();
 
-if (memberIds.length > 0) {
-  const { data: members, error: membersError } = await supabase
-    .from('users')
-    .select('id, full_name, phone, email')
-    .in('id', memberIds);
-  
-  if (!membersError && members) {
-    members.forEach(m => membersMap.set(m.id, m));
-  }
-}
+      if (memberIds.length > 0) {
+        const { data: members, error: membersError } = await supabase
+          .from('users')
+          .select('id, full_name, phone, email')
+          .in('id', memberIds);
+        
+        if (!membersError && members) {
+          members.forEach(m => membersMap.set(m.id, m));
+        }
+      }
       
       // Ambil stores
       const storeIds = [...new Set((orders || []).map(o => o.store_id).filter(id => id))];
@@ -129,37 +129,37 @@ if (memberIds.length > 0) {
       }
       
       // Gabungkan data
-const enriched = assignments.map(assignment => {
-  const order = orders?.find(o => o.id === assignment.order_id);
-  const store = order ? storesMap.get(order.store_id) : null;
-  const member = order?.member_id ? membersMap.get(order.member_id) : null;
-  
-  // Prioritas: guest_name untuk guest, member untuk member
-  let customerName = 'Guest';
-  let customerPhone = '-';
-  
-  if (order?.guest_name) {
-  // Guest: ambil dari order
-  customerName = order.guest_name;
-  customerPhone = order.guest_phone || '-';
-} else if (member) {
-  // Member: ambil dari data member
-  customerName = member.full_name || 'Member';
-  customerPhone = member.phone || '-';
-  }
-  
-  const enrichedOrder = order ? { 
-    ...order, 
-    stores: store,
-    customer_name: customerName,
-    customer_phone: customerPhone
-  } : null;
-  
-  return {
-    ...assignment,
-    orders: enrichedOrder
-  };
-});
+      const enriched = assignments.map(assignment => {
+        const order = orders?.find(o => o.id === assignment.order_id);
+        const store = order ? storesMap.get(order.store_id) : null;
+        const member = order?.member_id ? membersMap.get(order.member_id) : null;
+        
+        // Prioritas: guest_name untuk guest, member untuk member
+        let customerName = 'Guest';
+        let customerPhone = '-';
+        
+        if (order?.guest_name) {
+          // Guest: ambil dari order
+          customerName = order.guest_name;
+          customerPhone = order.guest_phone || '-';
+        } else if (member) {
+          // Member: ambil dari data member
+          customerName = member.full_name || 'Member';
+          customerPhone = member.phone || '-';
+        }
+        
+        const enrichedOrder = order ? { 
+          ...order, 
+          stores: store,
+          customer_name: customerName,
+          customer_phone: customerPhone
+        } : null;
+        
+        return {
+          ...assignment,
+          orders: enrichedOrder
+        };
+      });
       
       setAssignments(enriched);
       
@@ -280,89 +280,110 @@ const enriched = assignments.map(assignment => {
   };
   
   // ========== UPDATE STATUS DELIVERY ==========
-  const updateDeliveryStatus = async (deliveryId, newStatus) => {
-    const delivery = assignments.find(a => a.id === deliveryId);
-    if (!delivery) return;
+  // ========== UPDATE STATUS DELIVERY (DENGAN UPDATE STATE LOKAL) ==========
+const updateDeliveryStatus = async (deliveryId, newStatus) => {
+  const delivery = assignments.find(a => a.id === deliveryId);
+  if (!delivery) return;
+  
+  const updates = { status: newStatus };
+  let shouldUpdateOrderStatus = false;
+  
+  if (newStatus === 'on_delivery' && !delivery.started_at) {
+    updates.started_at = new Date().toISOString();
     
-    const updates = { status: newStatus };
-    let shouldUpdateOrderStatus = false;
-    
-    if (newStatus === 'on_delivery' && !delivery.started_at) {
-      updates.started_at = new Date().toISOString();
-      
-      // ===== HITUNG RUTE DARI POSISI KURIR SAAT INI =====
-      console.log('===== CALCULATING START ROUTE =====');
-      try {
-        const getCurrentPosition = () => new Promise((resolve, reject) => {
-          if (!navigator.geolocation) reject('Geolocation not supported');
-          navigator.geolocation.getCurrentPosition(resolve, reject, { 
-            enableHighAccuracy: true, 
-            timeout: 10000 
-          });
+    // ===== HITUNG RUTE DARI POSISI KURIR SAAT INI =====
+    console.log('===== CALCULATING START ROUTE =====');
+    try {
+      const getCurrentPosition = () => new Promise((resolve, reject) => {
+        if (!navigator.geolocation) reject('Geolocation not supported');
+        navigator.geolocation.getCurrentPosition(resolve, reject, { 
+          enableHighAccuracy: true, 
+          timeout: 10000 
         });
+      });
+      
+      const position = await getCurrentPosition();
+      const courierLat = position.coords.latitude;
+      const courierLng = position.coords.longitude;
+      const destLat = delivery.orders?.shipping_latitude;
+      const destLng = delivery.orders?.shipping_longitude;
+      
+      if (destLat && destLng) {
+        const response = await fetch('/api/shipping/route-from-current', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            courierLat,
+            courierLng,
+            destinationLat: destLat,
+            destinationLng: destLng,
+            storeId: delivery.orders?.store_id
+          })
+        });
+        const data = await response.json();
         
-        const position = await getCurrentPosition();
-        const courierLat = position.coords.latitude;
-        const courierLng = position.coords.longitude;
-        const destLat = delivery.orders?.shipping_latitude;
-        const destLng = delivery.orders?.shipping_longitude;
-        
-        console.log('📍 Start route from:', courierLat, courierLng);
-        console.log('📍 Destination:', destLat, destLng);
-        
-        if (destLat && destLng) {
-          const response = await fetch('/api/shipping/route-from-current', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              courierLat,
-              courierLng,
-              destinationLat: destLat,
-              destinationLng: destLng,
-              storeId: delivery.orders?.store_id
-            })
-          });
-          const data = await response.json();
-          console.log('Route API response:', data);
-          
-          if (data.success) {
-            updates.start_route_polyline = data.polyline;
-            updates.start_distance_meters = data.distanceMeters;
-            updates.start_duration_seconds = data.durationSeconds;
-            console.log('✅ Start route saved, polyline length:', data.polyline?.length);
-          } else {
-            console.error('Route API failed:', data.error);
-          }
+        if (data.success) {
+          updates.start_route_polyline = data.polyline;
+          updates.start_distance_meters = data.distanceMeters;
+          updates.start_duration_seconds = data.durationSeconds;
         }
-      } catch (err) {
-        console.error('Failed to get start route:', err);
       }
+    } catch (err) {
+      console.error('Failed to get start route:', err);
     }
-    
-    if (newStatus === 'completed') {
-      updates.completed_at = new Date().toISOString();
-      stopTracking(deliveryId);
-      shouldUpdateOrderStatus = true;
-    }
-    
-    const { error } = await supabase
-      .from('delivery_assignments')
-      .update(updates)
-      .eq('id', deliveryId);
-    
-    if (error) {
-      alert('Gagal update status: ' + error.message);
-    } else {
-      if (shouldUpdateOrderStatus) {
-        await supabase
-          .from('orders')
-          .update({ status: 'delivered', updated_at: new Date().toISOString() })
-          .eq('id', delivery.order_id);
-        alert('Pesanan telah selesai!');
-      }
-      await loadAssignments(user.id);
-    }
-  };
+  }
+  
+  if (newStatus === 'completed') {
+    updates.completed_at = new Date().toISOString();
+    stopTracking(deliveryId);
+    shouldUpdateOrderStatus = true;
+  }
+  
+  const { error } = await supabase
+    .from('delivery_assignments')
+    .update(updates)
+    .eq('id', deliveryId);
+  
+  if (error) {
+    alert('Gagal update status: ' + error.message);
+    return;
+  }
+  
+  // ========== UPDATE STATE LOKAL (TANPA RELOAD PENUH) ==========
+  
+  // 1. Update order status di database jika completed
+  if (shouldUpdateOrderStatus) {
+    await supabase
+      .from('orders')
+      .update({ status: 'delivered', updated_at: new Date().toISOString() })
+      .eq('id', delivery.order_id);
+    alert('Pesanan telah selesai!');
+  }
+  
+  // 2. Update assignments state lokal
+  setAssignments(prev => prev.map(a => 
+    a.id === deliveryId 
+      ? { ...a, ...updates }
+      : a
+  ));
+  
+  // 3. Update activeDeliveries state lokal
+  if (newStatus === 'completed') {
+    // Pindahkan dari active ke completed
+    setActiveDeliveries(prev => prev.filter(a => a.id !== deliveryId));
+    setCompletedDeliveries(prev => [...prev, { ...delivery, ...updates }]);
+  } else {
+    // Update status di activeDeliveries
+    setActiveDeliveries(prev => prev.map(a => 
+      a.id === deliveryId 
+        ? { ...a, ...updates }
+        : a
+    ));
+  }
+  
+  // 4. Jika status berubah dari assigned ke picking_up, expanded tetap terbuka
+  // Tidak perlu refresh scroll position
+};
   
   // ========== BUKA NAVIGASI ==========
   const openNavigation = (delivery) => {
@@ -435,62 +456,62 @@ const enriched = assignments.map(assignment => {
                   </button>
                   
                   {expandedDelivery === delivery.id && (
-  <div className="p-4 pt-0 border-t border-white/10 space-y-3">
-    
-    {/* 1. BARANG DIPESAN + ONGKIR + TOTAL */}
-    <div className="bg-gray-800/50 rounded-lg p-3">
-      <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
-      <div className="space-y-1">
-        {delivery.orders?.order_items && delivery.orders.order_items.length > 0 ? (
-          delivery.orders.order_items.map((item, idx) => (
-            <div key={idx} className="flex justify-between text-xs">
-              <span>{item.product_name} x{item.quantity}</span>
-              <span className="text-yellow-500">Rp {item.total?.toLocaleString()}</span>
-            </div>
-          ))
-        ) : (
-          <p className="text-xs text-gray-500">-</p>
-        )}
-      </div>
-      <div className="border-t border-white/10 mt-2 pt-2">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-400">Ongkos Kirim:</span>
-          <span>Rp {(delivery.orders?.shipping_cost || 0).toLocaleString()}</span>
-        </div>
-        <div className="flex justify-between text-sm font-semibold mt-1">
-          <span>Total:</span>
-          <span className="text-yellow-500">Rp {(delivery.orders?.total_amount || 0).toLocaleString()}</span>
-        </div>
-      </div>
-    </div>
-    
-    {/* 2. ALAMAT PENGIRIMAN */}
-    <div className="bg-gray-800/50 rounded-lg p-3">
-      <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman:</h4>
-      <p className="text-xs">{delivery.orders?.shipping_address || '-'}</p>
-    </div>
-    
-  {/* 3. INFO PEMESAN + TOMBOL WA */}
-<div className="bg-gray-800/50 rounded-lg p-3">
-  <div className="flex justify-between items-center">
-    <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
-    {delivery.orders?.customer_phone && delivery.orders.customer_phone !== '-' && (
-      <a
-        href={`https://wa.me/${delivery.orders.customer_phone.replace(/[^0-9]/g, '')}?text=Halo%20kak,%20saya%20kurir%20dari%20${delivery.orders?.stores?.name || 'PWM'}%20sedang%20mengantarkan%20pesanan%20anda%20dengan%20nomor%20%23${delivery.orders.order_number}.%20Mohon%20disediakan%20waktunya.`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded-full text-xs hover:bg-green-500/30 transition"
-      >
-        <MessageCircle size={12} /> Hubungi Pemesan
-      </a>
-    )}
-  </div>
-  <p className="text-xs mt-1">Nama: {delivery.orders?.customer_name || 'Guest'}</p>
-  <p className="text-xs">No. HP: {delivery.orders?.customer_phone || '-'}</p>
-  {delivery.orders?.notes && (
-    <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
-  )}
-</div>
+                    <div className="p-4 pt-0 border-t border-white/10 space-y-3">
+                      
+                      {/* 1. BARANG DIPESAN + ONGKIR + TOTAL */}
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
+                        <div className="space-y-1">
+                          {delivery.orders?.order_items && delivery.orders.order_items.length > 0 ? (
+                            delivery.orders.order_items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-xs">
+                                <span>{item.product_name} x{item.quantity}</span>
+                                <span className="text-yellow-500">Rp {item.total?.toLocaleString()}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-gray-500">-</p>
+                          )}
+                        </div>
+                        <div className="border-t border-white/10 mt-2 pt-2">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">Ongkos Kirim:</span>
+                            <span>Rp {(delivery.orders?.shipping_cost || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm font-semibold mt-1">
+                            <span>Total:</span>
+                            <span className="text-yellow-500">Rp {(delivery.orders?.total_amount || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 2. ALAMAT PENGIRIMAN */}
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman:</h4>
+                        <p className="text-xs">{delivery.orders?.shipping_address || '-'}</p>
+                      </div>
+                      
+                      {/* 3. INFO PEMESAN + TOMBOL WA */}
+                      <div className="bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-xs font-semibold text-gray-400 mb-1">👤 Info Pemesan:</h4>
+                          {delivery.orders?.customer_phone && delivery.orders.customer_phone !== '-' && (
+                            <a
+                              href={`https://wa.me/${delivery.orders.customer_phone.replace(/[^0-9]/g, '')}?text=Halo%20kak,%20saya%20kurir%20dari%20${delivery.orders?.stores?.name || 'PWM'}%20sedang%20mengantarkan%20pesanan%20anda%20dengan%20nomor%20%23${delivery.orders.order_number}.%20Mohon%20disediakan%20waktunya.`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded-full text-xs hover:bg-green-500/30 transition"
+                            >
+                              <MessageCircle size={12} /> Hubungi Pemesan
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-xs mt-1">Nama: {delivery.orders?.customer_name || 'Guest'}</p>
+                        <p className="text-xs">No. HP: {delivery.orders?.customer_phone || '-'}</p>
+                        {delivery.orders?.notes && (
+                          <p className="text-xs text-gray-400 mt-1">Catatan: {delivery.orders.notes}</p>
+                        )}
+                      </div>
                       
                       {/* Tombol Aksi */}
                       <div className="space-y-2">
