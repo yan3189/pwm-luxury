@@ -47,7 +47,7 @@ export default function Navbar() {
           .from('users')
           .select('full_name')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
         if (data?.full_name) setUserName(data.full_name);
       } else {
         setIsLoggedIn(false);
@@ -63,7 +63,7 @@ export default function Navbar() {
           .from('users')
           .select('full_name')
           .eq('id', session.user.id)
-          .single()
+          .maybeSingle()
           .then(({ data }) => setUserName(data?.full_name || ''));
       } else {
         setUserName('');
