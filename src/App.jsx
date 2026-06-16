@@ -38,6 +38,7 @@ import CourierDashboard from './pages/CourierDashboard';
 import SearchResultsPage from './pages/SearchResultsPage';
 import MemberSettingsCallback from './pages/MemberSettingsCallback';
 import AdminCreateUser from './pages/AdminCreateUser';
+import AdminStockManager from './pages/AdminStockManager';
 
 function App() {
   return (
@@ -79,6 +80,7 @@ function App() {
       <Route path="/search" element={<SearchResultsPage />} />
       <Route path="/member/settings/callback" element={<MemberSettingsCallback />} />
       <Route path="/admin/create-user" element={<AdminCreateUser />} />
+      <Route path="/admin/stock" element={<AdminStockManager />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

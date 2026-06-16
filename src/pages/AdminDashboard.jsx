@@ -478,6 +478,12 @@ export default function AdminDashboard() {
   <button onClick={() => setShowStoreModal(true)} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Edit size={16} /> Edit Profil Store</button>
   <button onClick={() => navigate('/admin/shipping')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Truck size={16} /> Pengaturan Ongkir</button>
   <button onClick={() => navigate('/admin/store-categories')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Package size={16} /> Atur Kategori Store</button>
+  <button 
+  onClick={() => navigate('/admin/stock')}
+  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-full text-sm transition"
+>
+  <Package size={16} /> Manajemen Stok
+</button>
 </div>
 
         {/* Preview 6 card (produk, artikel, event, member, pesan, pesanan) */}
