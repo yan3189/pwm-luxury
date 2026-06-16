@@ -279,8 +279,7 @@ export default function CourierDashboard() {
     }
   };
   
-  // ========== UPDATE STATUS DELIVERY ==========
-  // ========== UPDATE STATUS DELIVERY (DENGAN UPDATE STATE LOKAL) ==========
+// ========== UPDATE STATUS DELIVERY (DENGAN UPDATE STATE LOKAL + BROADCAST) ==========
 const updateDeliveryStatus = async (deliveryId, newStatus) => {
   const delivery = assignments.find(a => a.id === deliveryId);
   if (!delivery) return;
@@ -326,6 +325,25 @@ const updateDeliveryStatus = async (deliveryId, newStatus) => {
           updates.start_route_polyline = data.polyline;
           updates.start_distance_meters = data.distanceMeters;
           updates.start_duration_seconds = data.durationSeconds;
+          console.log('✅ Start route saved, polyline length:', data.polyline?.length);
+          
+          // ========== BROADCAST ROUTE UPDATE KE KONSUMEN ==========
+          try {
+            supabase
+              .channel(`tracking:${deliveryId}`)
+              .send({
+                type: 'broadcast',
+                event: 'route-updated',
+                payload: { polyline: data.polyline }
+              })
+              .then(() => console.log('📡 Route update broadcast sent'))
+              .catch(err => console.error('Failed to broadcast route update:', err));
+          } catch (broadcastErr) {
+            console.error('Broadcast error:', broadcastErr);
+          }
+          // =====================================================
+        } else {
+          console.error('Route API failed:', data.error);
         }
       }
     } catch (err) {
@@ -349,9 +367,7 @@ const updateDeliveryStatus = async (deliveryId, newStatus) => {
     return;
   }
   
-  // ========== UPDATE STATE LOKAL (TANPA RELOAD PENUH) ==========
-  
-  // 1. Update order status di database jika completed
+  // ========== UPDATE ORDER STATUS DI DATABASE JIKA COMPLETED ==========
   if (shouldUpdateOrderStatus) {
     await supabase
       .from('orders')
@@ -360,29 +376,22 @@ const updateDeliveryStatus = async (deliveryId, newStatus) => {
     alert('Pesanan telah selesai!');
   }
   
-  // 2. Update assignments state lokal
+  // ========== UPDATE STATE LOKAL (AGAR UI LANGSUNG BERUBAH) ==========
+  
+  // 1. Update assignments state
   setAssignments(prev => prev.map(a => 
-    a.id === deliveryId 
-      ? { ...a, ...updates }
-      : a
+    a.id === deliveryId ? { ...a, ...updates } : a
   ));
   
-  // 3. Update activeDeliveries state lokal
+  // 2. Update activeDeliveries state
   if (newStatus === 'completed') {
-    // Pindahkan dari active ke completed
     setActiveDeliveries(prev => prev.filter(a => a.id !== deliveryId));
     setCompletedDeliveries(prev => [...prev, { ...delivery, ...updates }]);
   } else {
-    // Update status di activeDeliveries
     setActiveDeliveries(prev => prev.map(a => 
-      a.id === deliveryId 
-        ? { ...a, ...updates }
-        : a
+      a.id === deliveryId ? { ...a, ...updates } : a
     ));
   }
-  
-  // 4. Jika status berubah dari assigned ke picking_up, expanded tetap terbuka
-  // Tidak perlu refresh scroll position
 };
   
   // ========== BUKA NAVIGASI ==========

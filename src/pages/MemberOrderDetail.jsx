@@ -39,6 +39,10 @@ export default function MemberOrderDetail() {
   const fetchOrder = async () => {
     setLoading(true);
     
+    console.log('===== FETCHING ORDER DETAIL =====');
+    console.log('Order ID:', id);
+    
+    // Step 1: Ambil order
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .select('*')
@@ -52,6 +56,7 @@ export default function MemberOrderDetail() {
     }
     setOrder(orderData);
     
+    // Step 2: Ambil store
     let storeData = null;
     if (orderData.store_id) {
       const { data: sd, error: storeError } = await supabase
@@ -59,15 +64,20 @@ export default function MemberOrderDetail() {
         .select('*')
         .eq('id', orderData.store_id)
         .single();
-      if (!storeError && sd) setStore(sd);
+      if (!storeError && sd) {
+        storeData = sd;
+        setStore(storeData);
+      }
     }
     
+    // Step 3: Ambil items
     const { data: itemsData } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', id);
     setItems(itemsData || []);
     
+    // Step 4: Ambil alamat
     if (orderData.address_id) {
       const { data: addressData } = await supabase
         .from('member_addresses')
@@ -77,8 +87,10 @@ export default function MemberOrderDetail() {
       if (addressData) setAddress(addressData);
     }
     
+    // Step 5: Ambil delivery assignment
     let deliveryData = null;
     if (orderData.delivery_type === 'internal') {
+      console.log('Fetching delivery assignment for order:', id);
       const { data: dd } = await supabase
         .from('delivery_assignments')
         .select('*, courier:users(id, email, full_name, phone)')
@@ -89,7 +101,9 @@ export default function MemberOrderDetail() {
         deliveryData = dd;
         setDelivery(dd);
         if (dd.courier) setCourier(dd.courier);
+        console.log('Delivery assignment found:', dd.id, 'status:', dd.status);
         
+        // Ambil tracking points terbaru
         const { data: points } = await supabase
           .from('tracking_points')
           .select('*')
@@ -97,17 +111,25 @@ export default function MemberOrderDetail() {
           .order('recorded_at', { ascending: false })
           .limit(1);
         if (points && points[0]) {
+          console.log('Latest tracking point:', points[0]);
           setCourierLocation([points[0].latitude, points[0].longitude]);
         }
+      } else {
+        console.log('No delivery assignment found');
       }
     }
     
-    // Polyline
+    // Step 6: Ambil polyline (prioritas: start_route_polyline → distance_cache)
+    console.log('🔍 Fetching polyline...');
+    console.log('deliveryData?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
+    
     if (deliveryData?.start_route_polyline) {
+      console.log('✅ Using START ROUTE polyline (kurir → customer)');
       setRoutePolyline(deliveryData.start_route_polyline);
     } else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
       let addressId = orderData.address_id;
       if (!addressId && orderData.shipping_address) {
+        console.log('No address_id, searching by shipping_address:', orderData.shipping_address);
         const { data: addrData } = await supabase
           .from('member_addresses')
           .select('id')
@@ -115,23 +137,41 @@ export default function MemberOrderDetail() {
           .maybeSingle();
         if (addrData) addressId = addrData.id;
       }
+      
       if (addressId) {
+        console.log('Fetching from distance_cache for store:', storeData.id, 'address:', addressId);
         const { data: cacheData } = await supabase
           .from('distance_cache')
           .select('polyline')
           .eq('store_id', storeData.id)
           .eq('address_id', addressId)
           .maybeSingle();
-        if (cacheData?.polyline) setRoutePolyline(cacheData.polyline);
+        
+        if (cacheData?.polyline) {
+          console.log('✅ Using DISTANCE CACHE polyline (store → customer), length:', cacheData.polyline.length);
+          setRoutePolyline(cacheData.polyline);
+        } else {
+          console.log('❌ No polyline found in distance_cache');
+        }
+      } else {
+        console.log('❌ No address_id found');
       }
+    } else {
+      console.log('❌ Conditions not met for polyline fetch');
     }
     
     setLoading(false);
+    console.log('===== FETCH COMPLETE =====');
   };
 
   // ========== REALTIME SUBSCRIPTION ==========
   useEffect(() => {
-    if (!delivery || !delivery.id) return;
+    if (!delivery || !delivery.id) {
+      console.log('❌ No delivery assignment, skipping realtime subscription');
+      return;
+    }
+    
+    console.log('🔧 Setting up realtime subscription for delivery:', delivery.id);
     
     let lastUpdateTime = Date.now();
     let statusCheckInterval = null;
@@ -146,55 +186,72 @@ export default function MemberOrderDetail() {
       .channel(`tracking:${delivery.id}`)
       .on('broadcast', { event: 'location-update' }, async (payload) => {
         if (!isMounted) return;
+        console.log('📍🔥 LOCATION UPDATE RECEIVED! Payload:', payload);
+        
         const { lat, lng, heading } = payload.payload;
+        console.log('📍 Location:', lat, lng, 'Heading:', heading);
+        
         lastUpdateTime = Date.now();
         if (isTrackingActive === 'timeout') setIsTrackingActive(true);
         if (heading !== undefined) setCourierHeading(heading);
         
-        if (courierLocation && courierLocation[0] && courierLocation[1]) {
-          const startLat = courierLocation[0], startLng = courierLocation[1];
-          const startTime = Date.now();
-          const duration = 2000;
-          if (animationRef.current) cancelAnimationFrame(animationRef.current);
-          function animate() {
-            if (!isMounted) return;
-            const elapsed = Date.now() - startTime;
-            const t = Math.min(1, elapsed / duration);
-            setCourierLocation([startLat + (lat - startLat) * t, startLng + (lng - startLng) * t]);
-            if (t < 1) animationRef.current = requestAnimationFrame(animate);
-            else animationRef.current = null;
-          }
-          animate();
-        } else {
-          setCourierLocation([lat, lng]);
-        }
+        // Update lokasi kurir
+        console.log('🎯 Setting courier location to:', [lat, lng]);
+        setCourierLocation([lat, lng]);
         
+        // Hitung ETA
         if (destLat && destLng && lat && lng) {
           const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
           setEta(newEta);
         }
-        if (mapRef.current && lat && lng) mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
+        
+        // Update map center
+        if (mapRef.current && lat && lng) {
+          mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
+        }
       })
       .on('broadcast', { event: 'tracking-status' }, (payload) => {
         if (!isMounted) return;
+        console.log('📡 Tracking status update:', payload.payload);
         const { status } = payload.payload;
-        if (status === 'active') { setIsTrackingActive(true); lastUpdateTime = Date.now(); }
-        else if (status === 'inactive') setIsTrackingActive(false);
+        if (status === 'active') { 
+          setIsTrackingActive(true); 
+          lastUpdateTime = Date.now();
+          console.log('✅ Tracking status: ACTIVE');
+        } else if (status === 'inactive') {
+          setIsTrackingActive(false);
+          console.log('❌ Tracking status: INACTIVE');
+        }
       })
-      .subscribe();
+      .on('broadcast', { event: 'route-updated' }, (payload) => {
+    console.log('🔄 Route updated! New polyline received:', payload.payload);
+    const { polyline } = payload.payload;
+    if (polyline) {
+      console.log('✅ Updating route polyline to start route');
+      setRoutePolyline(polyline);
+    }
+  })
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status);
+      });
     
+    // Timeout detection
     statusCheckInterval = setInterval(() => {
       if (!isMounted) return;
-      if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) setIsTrackingActive('timeout');
+      if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
+        console.log('⏰ No location update for 30 seconds, marking tracking as timeout');
+        setIsTrackingActive('timeout');
+      }
     }, 10000);
     
     return () => {
+      console.log('🧹 Cleaning up realtime subscription for delivery:', delivery.id);
       isMounted = false;
       supabase.removeChannel(channel);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       if (statusCheckInterval) clearInterval(statusCheckInterval);
     };
-  }, [delivery, courierLocation, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+  }, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
 
   const handleUploadProof = async (e) => {
     const file = e.target.files[0];
@@ -247,7 +304,6 @@ export default function MemberOrderDetail() {
   const handleRequestCancellation = async () => {
     if (!confirm('Ajukan pembatalan pesanan? Admin akan memproses permintaan Anda.')) return;
     setCancelling(true);
-    // Untuk sementara, kita kirim notifikasi atau update status jadi cancellation_requested
     const { error } = await supabase
       .from('orders')
       .update({ status: 'cancellation_requested', notes: `Permintaan pembatalan oleh member pada ${new Date().toLocaleString()}` })
@@ -403,7 +459,7 @@ export default function MemberOrderDetail() {
                 </div>
               </div>
 
-              {/* Instruksi Pembayaran (hanya di tab detail) */}
+              {/* Instruksi Pembayaran */}
               <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
                 <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
                 <div className="bg-gray-800 rounded-lg p-3">
