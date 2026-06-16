@@ -37,6 +37,7 @@ import SuperAdminCategories from './pages/SuperAdminCategories'
 import CourierDashboard from './pages/CourierDashboard';
 import SearchResultsPage from './pages/SearchResultsPage';
 import MemberSettingsCallback from './pages/MemberSettingsCallback';
+import AdminCreateUser from './pages/AdminCreateUser';
 
 function App() {
   return (
@@ -77,6 +78,7 @@ function App() {
       <Route path="/courier/dashboard" element={<CourierDashboard />} />
       <Route path="/search" element={<SearchResultsPage />} />
       <Route path="/member/settings/callback" element={<MemberSettingsCallback />} />
+      <Route path="/admin/create-user" element={<AdminCreateUser />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
+import { UserPlus } from 'lucide-react';
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
@@ -453,11 +454,31 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tombol aksi */}
-        <div className="mb-6 flex flex-wrap gap-3 justify-end">
-          <button onClick={() => setShowStoreModal(true)} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Edit size={16} /> Edit Profil Store</button>
-          <button onClick={() => navigate('/admin/shipping')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Truck size={16} /> Pengaturan Ongkir</button>
-          <button onClick={() => navigate('/admin/store-categories')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Package size={16} /> Atur Kategori Store</button>
-        </div>
+<div className="mb-6 flex flex-wrap gap-3 justify-end">
+  {/* Tombol Buat Akun - untuk Super Admin & Store Admin */}
+  {(userRole === 'super_admin' || userRole === 'store_admin') && (
+    <button 
+      onClick={() => navigate('/admin/create-user')}
+      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full text-sm transition"
+    >
+      <UserPlus size={16} /> Buat Akun
+    </button>
+  )}
+  
+  {/* Tombol Kelola Member - untuk Super Admin & Store Admin */}
+  {(userRole === 'super_admin' || userRole === 'store_admin') && (
+    <button 
+      onClick={() => navigate('/admin/members')}
+      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-full text-sm transition"
+    >
+      <Users size={16} /> Kelola Member
+    </button>
+  )}
+  
+  <button onClick={() => setShowStoreModal(true)} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Edit size={16} /> Edit Profil Store</button>
+  <button onClick={() => navigate('/admin/shipping')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Truck size={16} /> Pengaturan Ongkir</button>
+  <button onClick={() => navigate('/admin/store-categories')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Package size={16} /> Atur Kategori Store</button>
+</div>
 
         {/* Preview 6 card (produk, artikel, event, member, pesan, pesanan) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
