@@ -43,7 +43,7 @@ export default function TrackOrderPage() {
     setLoading(true);
     setError(null);
     
-    console.log('===== FETCHING ORDER =====');
+    console.log('===== FETCHING ORDER DETAIL (TRACK ORDER) =====');
     console.log('Order ID:', id);
     
     // Step 1: Ambil order
@@ -88,6 +88,7 @@ export default function TrackOrderPage() {
     // Step 4: Ambil delivery assignment
     let deliveryData = null;
     if (orderData.delivery_type === 'internal') {
+      console.log('Fetching delivery assignment for order:', id);
       const { data: dd } = await supabase
         .from('delivery_assignments')
         .select('*, courier:users(id, email, full_name, phone)')
@@ -98,6 +99,7 @@ export default function TrackOrderPage() {
         deliveryData = dd;
         setDelivery(dd);
         if (dd.courier) setCourier(dd.courier);
+        console.log('Delivery assignment found:', dd.id, 'status:', dd.status);
         
         const { data: points } = await supabase
           .from('tracking_points')
@@ -106,21 +108,25 @@ export default function TrackOrderPage() {
           .order('recorded_at', { ascending: false })
           .limit(1);
         if (points && points[0]) {
+          console.log('Latest tracking point:', points[0]);
           setCourierLocation([points[0].latitude, points[0].longitude]);
         }
+      } else {
+        console.log('No delivery assignment found');
       }
     }
     
-    // Step 5: Ambil polyline (prioritas start route dari delivery)
-    console.log('🔍 Mencari polyline...');
-    console.log('delivery?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
+    // Step 5: Ambil polyline (prioritas: start_route_polyline → distance_cache)
+    console.log('🔍 Fetching polyline...');
+    console.log('deliveryData?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
     
     if (deliveryData?.start_route_polyline) {
-      console.log('✅ Using start route polyline from delivery');
+      console.log('✅ Using START ROUTE polyline (kurir → customer)');
       setRoutePolyline(deliveryData.start_route_polyline);
     } else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
       let addressId = orderData.address_id;
       if (!addressId && orderData.shipping_address) {
+        console.log('No address_id, searching by shipping_address:', orderData.shipping_address);
         const { data: addrData } = await supabase
           .from('member_addresses')
           .select('id')
@@ -128,18 +134,27 @@ export default function TrackOrderPage() {
           .maybeSingle();
         if (addrData) addressId = addrData.id;
       }
+      
       if (addressId) {
+        console.log('Fetching from distance_cache for store:', storeData.id, 'address:', addressId);
         const { data: cacheData } = await supabase
           .from('distance_cache')
           .select('polyline')
           .eq('store_id', storeData.id)
           .eq('address_id', addressId)
           .maybeSingle();
+        
         if (cacheData?.polyline) {
-          console.log('✅ Polyline ditemukan di cache');
+          console.log('✅ Using DISTANCE CACHE polyline (store → customer), length:', cacheData.polyline.length);
           setRoutePolyline(cacheData.polyline);
+        } else {
+          console.log('❌ No polyline found in distance_cache');
         }
+      } else {
+        console.log('❌ No address_id found');
       }
+    } else {
+      console.log('❌ Conditions not met for polyline fetch');
     }
     
     setLoading(false);
@@ -149,11 +164,11 @@ export default function TrackOrderPage() {
   // ========== REALTIME SUBSCRIPTION ==========
   useEffect(() => {
     if (!delivery || !delivery.id) {
-      console.log('No delivery assignment, skipping realtime subscription');
+      console.log('❌ No delivery assignment, skipping realtime subscription');
       return;
     }
     
-    console.log('Setting up realtime subscription for delivery:', delivery.id);
+    console.log('🔧 Setting up realtime subscription for delivery:', delivery.id);
     
     let lastUpdateTime = Date.now();
     let statusCheckInterval = null;
@@ -168,30 +183,18 @@ export default function TrackOrderPage() {
       .channel(`tracking:${delivery.id}`)
       .on('broadcast', { event: 'location-update' }, async (payload) => {
         if (!isMounted) return;
+        console.log('📍🔥 LOCATION UPDATE RECEIVED! Payload:', payload);
+        
         const { lat, lng, heading } = payload.payload;
-        console.log('📍 Location update received:', { lat, lng, heading });
+        console.log('📍 Location:', lat, lng, 'Heading:', heading);
         
         lastUpdateTime = Date.now();
         if (isTrackingActive === 'timeout') setIsTrackingActive(true);
         if (heading !== undefined) setCourierHeading(heading);
         
-        if (courierLocation && courierLocation[0] && courierLocation[1]) {
-          const startLat = courierLocation[0], startLng = courierLocation[1];
-          const startTime = Date.now();
-          const duration = 2000;
-          if (animationRef.current) cancelAnimationFrame(animationRef.current);
-          function animate() {
-            if (!isMounted) return;
-            const elapsed = Date.now() - startTime;
-            const t = Math.min(1, elapsed / duration);
-            setCourierLocation([startLat + (lat - startLat) * t, startLng + (lng - startLng) * t]);
-            if (t < 1) animationRef.current = requestAnimationFrame(animate);
-            else animationRef.current = null;
-          }
-          animate();
-        } else {
-          setCourierLocation([lat, lng]);
-        }
+        // Update lokasi kurir
+        console.log('🎯 Setting courier location to:', [lat, lng]);
+        setCourierLocation([lat, lng]);
         
         // Hitung ETA
         if (destLat && destLng && lat && lng) {
@@ -199,43 +202,53 @@ export default function TrackOrderPage() {
           setEta(newEta);
         }
         
+        // Update map center
         if (mapRef.current && lat && lng) {
           mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
-        }
-        
-        // Refresh start route polyline jika belum ada
-        if (delivery && !delivery.start_route_polyline) {
-          const { data: freshDelivery } = await supabase
-            .from('delivery_assignments')
-            .select('start_route_polyline')
-            .eq('id', delivery.id)
-            .single();
-          if (freshDelivery?.start_route_polyline) {
-            setRoutePolyline(freshDelivery.start_route_polyline);
-            setDelivery(prev => ({ ...prev, start_route_polyline: freshDelivery.start_route_polyline }));
-          }
         }
       })
       .on('broadcast', { event: 'tracking-status' }, (payload) => {
         if (!isMounted) return;
+        console.log('📡 Tracking status update:', payload.payload);
         const { status } = payload.payload;
-        if (status === 'active') { setIsTrackingActive(true); lastUpdateTime = Date.now(); }
-        else if (status === 'inactive') setIsTrackingActive(false);
+        if (status === 'active') { 
+          setIsTrackingActive(true); 
+          lastUpdateTime = Date.now();
+          console.log('✅ Tracking status: ACTIVE');
+        } else if (status === 'inactive') {
+          setIsTrackingActive(false);
+          console.log('❌ Tracking status: INACTIVE');
+        }
       })
-      .subscribe();
+      .on('broadcast', { event: 'route-updated' }, (payload) => {
+        console.log('🔄 Route updated! New polyline received:', payload.payload);
+        const { polyline } = payload.payload;
+        if (polyline) {
+          console.log('✅ Updating route polyline to start route');
+          setRoutePolyline(polyline);
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status);
+      });
     
+    // Timeout detection
     statusCheckInterval = setInterval(() => {
       if (!isMounted) return;
-      if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) setIsTrackingActive('timeout');
+      if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
+        console.log('⏰ No location update for 30 seconds, marking tracking as timeout');
+        setIsTrackingActive('timeout');
+      }
     }, 10000);
     
     return () => {
+      console.log('🧹 Cleaning up realtime subscription for delivery:', delivery.id);
       isMounted = false;
       supabase.removeChannel(channel);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       if (statusCheckInterval) clearInterval(statusCheckInterval);
     };
-  }, [delivery, courierLocation, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+  }, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
 
   const handleUploadProof = async (e) => {
     const file = e.target.files[0];
