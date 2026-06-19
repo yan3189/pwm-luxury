@@ -18,6 +18,7 @@ import {
   exportStockReport,
   checkStockAvailability
 } from '../services/stockService';
+import { getStockStatus, setStockStatus } from '../services/stockService';
 
 export default function AdminStockManager() {
   const [store, setStore] = useState(null);
@@ -37,12 +38,41 @@ export default function AdminStockManager() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [adminId, setAdminId] = useState(null);
-  
+  // State untuk status stok
+const [stockEnabled, setStockEnabled] = useState(true);
+const [toggling, setToggling] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     checkUser();
   }, []);
+
+  // Ambil status stok saat load
+useEffect(() => {
+  if (store) {
+    getStockStatus(store.id).then(status => {
+      setStockEnabled(status);
+    }).catch(() => {});
+  }
+}, [store]);
+
+// Fungsi toggle stok
+const handleToggleStock = async () => {
+  setToggling(true);
+  try {
+    const newStatus = !stockEnabled;
+    await setStockStatus(store.id, newStatus);
+    setStockEnabled(newStatus);
+    setMessage({ 
+      type: 'success', 
+      text: newStatus ? '✅ Sistem stok diaktifkan' : '⏸️ Sistem stok dinonaktifkan' 
+    });
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  } catch (error) {
+    setMessage({ type: 'error', text: '❌ Gagal mengubah status: ' + error.message });
+  }
+  setToggling(false);
+};
 
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -251,9 +281,40 @@ setMessage({
                 <Package size={20} className="text-yellow-500" />
                 Update Stok
               </h2>
-              
+              <div className="flex items-center justify-between mb-4">
+  <h2 className="text-lg font-display flex items-center gap-2">
+    <Package size={20} className="text-yellow-500" />
+    Update Stok
+  </h2>
+  <button
+    onClick={handleToggleStock}
+    disabled={toggling}
+    className={`px-3 py-1 rounded-full text-sm transition flex items-center gap-2 ${
+      stockEnabled 
+        ? 'bg-green-600 hover:bg-green-700 text-white' 
+        : 'bg-red-600 hover:bg-red-700 text-white'
+    }`}
+  >
+    {stockEnabled ? (
+      <>
+        <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></span>
+        Stok Aktif
+      </>
+    ) : (
+      <>
+        <span className="w-2 h-2 bg-red-300 rounded-full"></span>
+        Stok Nonaktif
+      </>
+    )}
+  </button>
+</div>
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Pilih Produk */}
+                {!stockEnabled && (
+  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-sm text-yellow-400">
+    ⚠️ Sistem stok sedang dinonaktifkan. Perubahan stok tidak akan dicatat.
+  </div>
+)}
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Pilih Produk</label>
                   <div className="relative">
@@ -363,12 +424,12 @@ setMessage({
 
                 {/* Tombol Submit */}
                 <button
-                  type="submit"
-                  disabled={submitting || !selectedProductId}
-                  className="w-full bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
-                >
-                  {submitting ? 'Memproses...' : 'Update Stok'}
-                </button>
+  type="submit"
+  disabled={submitting || !selectedProductId || !stockEnabled}
+  className="w-full bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
+>
+  {submitting ? 'Memproses...' : 'Update Stok'}
+</button>
               </form>
 
               {/* Tombol Export */}

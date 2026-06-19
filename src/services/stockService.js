@@ -280,3 +280,40 @@ export async function checkStockAvailability(productId, quantity) {
     productName: data.name
   };
 }
+
+/**
+ * Ambil status stok (aktif/nonaktif) untuk store
+ * @param {string} storeId - ID store
+ */
+export async function getStockStatus(storeId) {
+  const { data, error } = await supabase
+    .from('system_settings')
+    .select('value')
+    .eq('store_id', storeId)
+    .eq('key', 'stock_enabled')
+    .maybeSingle();
+  
+  if (error) throw error;
+  return data?.value === 'true';
+}
+
+/**
+ * Set status stok (aktif/nonaktif) untuk store
+ * @param {string} storeId - ID store
+ * @param {boolean} enabled - true = aktif, false = nonaktif
+ */
+export async function setStockStatus(storeId, enabled) {
+  const { error } = await supabase
+    .from('system_settings')
+    .upsert({
+      store_id: storeId,
+      key: 'stock_enabled',
+      value: enabled ? 'true' : 'false',
+      updated_at: new Date().toISOString()
+    }, { 
+      onConflict: 'store_id, key' 
+    });
+  
+  if (error) throw error;
+  return { success: true, enabled };
+}
