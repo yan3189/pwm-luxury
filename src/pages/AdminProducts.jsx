@@ -1,8 +1,9 @@
 // ========== FILE: src/pages/AdminProducts.jsx ==========
+// Halaman manajemen produk dengan kategori, diskon, favorit, upsell
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Package, Edit, Trash2, Plus, Percent, Star } from 'lucide-react'
+import { Package, Edit, Trash2, Plus, Percent, Star, ShoppingBag } from 'lucide-react'
 
 export default function AdminProducts() {
   const [store, setStore] = useState(null)
@@ -20,7 +21,8 @@ export default function AdminProducts() {
     category_id: '',
     has_discount: false,
     discount_percentage: '',
-    is_featured: false
+    is_featured: false,
+    is_upsell: false
   })
   const navigate = useNavigate()
 
@@ -49,7 +51,6 @@ export default function AdminProducts() {
   }
 
   const fetchCategories = async (storeId) => {
-    // Ambil hanya kategori yang aktif untuk store ini
     const { data, error } = await supabase
       .from('store_categories')
       .select(`
@@ -66,7 +67,6 @@ export default function AdminProducts() {
       return;
     }
     
-    // Extract master categories data
     const activeCategories = data
       .filter(item => item.master_categories)
       .map(item => ({
@@ -76,7 +76,7 @@ export default function AdminProducts() {
       }));
     
     setCategories(activeCategories);
-  };
+  }
 
   const fetchStoreAndProducts = async (storeId) => {
     const { data: storeData } = await supabase
@@ -106,7 +106,8 @@ export default function AdminProducts() {
       category_id: '',
       has_discount: false,
       discount_percentage: '',
-      is_featured: false
+      is_featured: false,
+      is_upsell: false
     })
     setShowModal(true)
   }
@@ -122,7 +123,8 @@ export default function AdminProducts() {
       category_id: product.category_id || '',
       has_discount: product.has_discount || false,
       discount_percentage: product.discount_percentage || '',
-      is_featured: product.is_featured || false
+      is_featured: product.is_featured || false,
+      is_upsell: product.is_upsell || false
     })
     setShowModal(true)
   }
@@ -140,7 +142,8 @@ export default function AdminProducts() {
       category_id: productForm.category_id || null,
       has_discount: productForm.has_discount,
       discount_percentage: productForm.has_discount ? parseInt(productForm.discount_percentage) || 0 : 0,
-      is_featured: productForm.is_featured
+      is_featured: productForm.is_featured,
+      is_upsell: productForm.is_upsell || false
     }
 
     if (editingProduct) {
@@ -170,6 +173,15 @@ export default function AdminProducts() {
     }
   }
 
+  const toggleUpsell = async (productId, currentValue) => {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_upsell: !currentValue })
+      .eq('id', productId)
+    if (error) alert('Gagal update upsell: ' + error.message)
+    else fetchStoreAndProducts(store.id)
+  }
+
   const getDiscountedPrice = (price, discountPercentage) => {
     if (!discountPercentage || discountPercentage === 0) return price
     return Math.round(price * (100 - discountPercentage) / 100)
@@ -184,7 +196,7 @@ export default function AdminProducts() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-display">Manajemen Produk</h1>
           <div className="flex gap-3">
-            <button onClick={() => navigate('/admin/dashboard')} className="bg-gray-700 px-4 py-2 rounded-full text-sm">Kembali ke Dashboard</button>
+            <button onClick={() => navigate('/admin/dashboard')} className="bg-gray-700 px-4 py-2 rounded-full text-sm">Kembali</button>
             <button onClick={openAddModal} className="bg-yellow-500 text-black px-4 py-2 rounded-full text-sm flex items-center gap-1">
               <Plus size={16} /> Tambah Produk
             </button>
@@ -202,6 +214,7 @@ export default function AdminProducts() {
                   <th className="p-3">Harga</th>
                   <th className="p-3">Stok</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Upsell</th>
                   <th className="p-3">Aksi</th>
                 </tr>
               </thead>
@@ -218,7 +231,7 @@ export default function AdminProducts() {
                         ) : (
                           <div className="w-12 h-12 bg-gray-700 rounded flex items-center justify-center text-xs">No img</div>
                         )}
-                       </td>
+                      </td>
                       <td className="p-3 font-medium">{p.name}</td>
                       <td className="p-3 text-sm">
                         {categories.find(c => c.id === p.category_id)?.name || '-'}
@@ -251,6 +264,24 @@ export default function AdminProducts() {
                           )}
                         </div>
                       </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => toggleUpsell(p.id, p.is_upsell)}
+                          className={`px-2 py-1 rounded-full text-xs transition ${
+                            p.is_upsell
+                              ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                              : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'
+                          }`}
+                        >
+                          {p.is_upsell ? (
+                            <span className="flex items-center gap-1">
+                              <ShoppingBag size={12} /> Upsell
+                            </span>
+                          ) : (
+                            'Tandai Upsell'
+                          )}
+                        </button>
+                      </td>
                       <td className="p-3 flex gap-2">
                         <button onClick={() => openEditModal(p)} className="text-blue-400 hover:text-blue-300">
                           <Edit size={18} />
@@ -264,7 +295,7 @@ export default function AdminProducts() {
                 )}
                 {products.length === 0 && (
                   <tr>
-                    <td colSpan="7" className="p-3 text-center text-gray-500">Belum ada produk</td>
+                    <td colSpan="8" className="p-3 text-center text-gray-500">Belum ada produk</td>
                   </tr>
                 )}
               </tbody>
@@ -290,7 +321,6 @@ export default function AdminProducts() {
                 />
               </div>
 
-              {/* Dropdown Kategori - Hanya yang aktif */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Kategori</label>
                 <select 
@@ -368,6 +398,17 @@ export default function AdminProducts() {
                   className="w-4 h-4"
                 />
                 <label htmlFor="is_featured" className="text-sm text-gray-300">Produk Favorit</label>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  id="is_upsell"
+                  checked={productForm.is_upsell}
+                  onChange={e => setProductForm({...productForm, is_upsell: e.target.checked})}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="is_upsell" className="text-sm text-gray-300">Produk Upselling (tampil di checkout)</label>
               </div>
 
               <div>

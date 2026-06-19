@@ -6,31 +6,48 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Ambil daftar upselling aktif untuk store tertentu
- * @param {string} storeId - ID store
+ * Ambil produk yang ditandai sebagai upselling (dari tabel products)
+ * Menggunakan field `is_upsell` atau label khusus
  */
 export async function getUpsells(storeId) {
+  // Ambil produk dengan is_upsell = true (atau menggunakan label)
   const { data, error } = await supabase
-    .from('checkout_upsells')
+    .from('products')
     .select(`
-      *,
-      products (
-        id,
-        name,
-        image_url
-      )
+      id as product_id,
+      name as title,
+      description,
+      price,
+      image_url,
+      stock,
+      is_featured,
+      has_discount,
+      discount_percentage,
+      store_id
     `)
     .eq('store_id', storeId)
+    .eq('is_upsell', true) // ← TAMBAHKAN KOLOM INI DI DATABASE
     .eq('is_active', true)
-    .order('display_order', { ascending: true })
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
   
   if (error) {
-    console.error('Error fetching upsells:', error);
+    console.error('Error fetching upsell products:', error);
     return [];
   }
   
-  return data || [];
+  // Format agar sesuai dengan struktur yang dibutuhkan CheckoutPage
+  return (data || []).map(item => ({
+    product_id: item.product_id,
+    title: item.title,
+    description: item.description || '',
+    price: item.price,
+    image_url: item.image_url,
+    // Untuk konsistensi dengan struktur lama
+    products: {
+      name: item.title,
+      image_url: item.image_url
+    }
+  }));
 }
 
 /**

@@ -40,22 +40,17 @@ export default function VoucherModal({
 
   // Handle apply voucher
   const handleApply = () => {
-    if (selectedIds.length === 0) {
-      setError('Pilih minimal 1 voucher');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    
-    try {
-      onApply(selectedIds);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Gagal menerapkan voucher');
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  setError('');
+  try {
+    onApply(selectedIds); // Bisa kirim array kosong
+    onClose();
+  } catch (err) {
+    setError(err.message || 'Gagal menerapkan voucher');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Format rupiah
   const formatRupiah = (amount) => {
@@ -251,12 +246,12 @@ export default function VoucherModal({
     </button>
     
     <button
-      onClick={handleApply}
-      disabled={loading || selectedIds.length === 0}
-      className="flex-1 bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
-    >
-      {loading ? 'Memproses...' : `Pakai Voucher (${selectedIds.length})`}
-    </button>
+  onClick={handleApply}
+  disabled={loading}
+  className="flex-1 bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
+>
+  {loading ? 'Memproses...' : `Pakai Voucher (${selectedIds.length})`}
+</button>
     <button
       onClick={onClose}
       className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
