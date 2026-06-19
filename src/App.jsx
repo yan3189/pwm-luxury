@@ -39,6 +39,7 @@ import SearchResultsPage from './pages/SearchResultsPage';
 import MemberSettingsCallback from './pages/MemberSettingsCallback';
 import AdminCreateUser from './pages/AdminCreateUser';
 import AdminStockManager from './pages/AdminStockManager';
+import AdminPromotions from './pages/AdminPromotions';
 
 function App() {
   return (
@@ -81,6 +82,7 @@ function App() {
       <Route path="/member/settings/callback" element={<MemberSettingsCallback />} />
       <Route path="/admin/create-user" element={<AdminCreateUser />} />
       <Route path="/admin/stock" element={<AdminStockManager />} />
+      <Route path="/admin/promotions" element={<AdminPromotions />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

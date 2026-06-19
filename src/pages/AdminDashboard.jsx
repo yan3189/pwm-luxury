@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink, Settings, Truck 
+  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck 
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
@@ -483,6 +483,12 @@ export default function AdminDashboard() {
   className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-full text-sm transition"
 >
   <Package size={16} /> Manajemen Stok
+</button>
+<button 
+  onClick={() => navigate('/admin/promotions')}
+  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition"
+>
+  <Gift size={16} /> Promosi
 </button>
 </div>
 
