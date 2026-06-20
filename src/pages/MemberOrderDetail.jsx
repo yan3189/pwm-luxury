@@ -37,165 +37,164 @@ export default function MemberOrderDetail() {
   }, [id]);
 
   const fetchOrder = async () => {
-  setLoading(true);
-  
-  console.log('===== FETCHING ORDER DETAIL =====');
-  console.log('Order ID:', id);
-  
-  // Step 1: Ambil order
-  const { data: orderData, error: orderError } = await supabase
-    .from('orders')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (orderError || !orderData) {
-    console.error('Order error:', orderError);
-    setLoading(false);
-    return;
-  }
-  setOrder(orderData);
-  
-  // Step 2: Ambil store
-  let storeData = null;
-  if (orderData.store_id) {
-    const { data: sd, error: storeError } = await supabase
-      .from('stores')
-      .select('*')
-      .eq('id', orderData.store_id)
-      .single();
-    if (!storeError && sd) {
-      storeData = sd;
-      setStore(storeData);
-    }
-  }
-  
-  // Step 3: Ambil items dari order_items
-  const { data: itemsData } = await supabase
-    .from('order_items')
-    .select('*')
-    .eq('order_id', id);
-  
-  // ================================================================
-  // STEP 3B: GABUNGKAN DENGAN UPSEL ITEMS (dari orders.upsell_items)
-  // ================================================================
-  let allItems = itemsData || [];
-  
-  // Cek apakah ada upsell_items di order
-  if (orderData.upsell_items && Array.isArray(orderData.upsell_items) && orderData.upsell_items.length > 0) {
-    console.log('✅ Upsell items found in order:', orderData.upsell_items);
+    setLoading(true);
     
-    // Konversi upsell_items ke format yang sama dengan order_items
-    const upsellItems = orderData.upsell_items.map((upsell, index) => ({
-      id: `upsell-${index}`, // ID sementara karena tidak ada di database
-      order_id: orderData.id,
-      product_id: upsell.product_id || null,
-      product_name: upsell.name || 'Produk Upsell',
-      quantity: upsell.quantity || 1,
-      price: upsell.price || 0,
-      total: (upsell.price || 0) * (upsell.quantity || 1),
-      discount_percentage: upsell.discount_percentage || 0,
-      original_price: upsell.price || 0,
-      discounted_price: upsell.has_discount 
-        ? Math.round((upsell.price || 0) * (1 - (upsell.discount_percentage || 0) / 100))
-        : (upsell.price || 0),
-      subtotal: (upsell.price || 0) * (upsell.quantity || 1),
-      is_upsell: true, // ← TANDA bahwa ini dari upsell
-      from_upsell: true
-    }));
+    console.log('===== FETCHING ORDER DETAIL =====');
+    console.log('Order ID:', id);
     
-    // Gabungkan semua item (order_items + upsell_items)
-    allItems = [...allItems, ...upsellItems];
-    console.log('✅ Combined items:', allItems);
-  }
-  
-  setItems(allItems);
-  
-  // Step 4: Ambil alamat
-  if (orderData.address_id) {
-    const { data: addressData } = await supabase
-      .from('member_addresses')
+    // Step 1: Ambil order
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
       .select('*')
-      .eq('id', orderData.address_id)
-      .single();
-    if (addressData) setAddress(addressData);
-  }
-  
-  // Step 5: Ambil delivery assignment
-  let deliveryData = null;
-  if (orderData.delivery_type === 'internal') {
-    console.log('Fetching delivery assignment for order:', id);
-    const { data: dd } = await supabase
-      .from('delivery_assignments')
-      .select('*, courier:users(id, email, full_name, phone)')
-      .eq('order_id', id)
+      .eq('id', id)
       .maybeSingle();
     
-    if (dd) {
-      deliveryData = dd;
-      setDelivery(dd);
-      if (dd.courier) setCourier(dd.courier);
-      console.log('Delivery assignment found:', dd.id, 'status:', dd.status);
-      
-      const { data: points } = await supabase
-        .from('tracking_points')
-        .select('*')
-        .eq('delivery_id', dd.id)
-        .order('recorded_at', { ascending: false })
-        .limit(1);
-      if (points && points[0]) {
-        console.log('Latest tracking point:', points[0]);
-        setCourierLocation([points[0].latitude, points[0].longitude]);
-      }
-    } else {
-      console.log('No delivery assignment found');
+    if (orderError || !orderData) {
+      console.error('Order error:', orderError);
+      setLoading(false);
+      return;
     }
-  }
-  
-  // Step 6: Ambil polyline (sama seperti sebelumnya)
-  console.log('🔍 Fetching polyline...');
-  console.log('deliveryData?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
-  
-  if (deliveryData?.start_route_polyline) {
-    console.log('✅ Using START ROUTE polyline (kurir → customer)');
-    setRoutePolyline(deliveryData.start_route_polyline);
-  } else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
-    let addressId = orderData.address_id;
-    if (!addressId && orderData.shipping_address) {
-      console.log('No address_id, searching by shipping_address:', orderData.shipping_address);
-      const { data: addrData } = await supabase
-        .from('member_addresses')
-        .select('id')
-        .eq('address_text', orderData.shipping_address)
-        .maybeSingle();
-      if (addrData) addressId = addrData.id;
+    setOrder(orderData);
+    
+    // Step 2: Ambil store
+    let storeData = null;
+    if (orderData.store_id) {
+      const { data: sd, error: storeError } = await supabase
+        .from('stores')
+        .select('*')
+        .eq('id', orderData.store_id)
+        .single();
+      if (!storeError && sd) {
+        storeData = sd;
+        setStore(storeData);
+      }
     }
     
-    if (addressId) {
-      console.log('Fetching from distance_cache for store:', storeData.id, 'address:', addressId);
-      const { data: cacheData } = await supabase
-        .from('distance_cache')
-        .select('polyline')
-        .eq('store_id', storeData.id)
-        .eq('address_id', addressId)
+    // Step 3: Ambil items dari order_items
+    const { data: itemsData } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', id);
+    
+    // ================================================================
+    // STEP 3B: GABUNGKAN DENGAN UPSEL ITEMS (dari orders.upsell_items)
+    // ================================================================
+    let allItems = itemsData || [];
+    
+    // Cek apakah ada upsell_items di order
+    if (orderData.upsell_items && Array.isArray(orderData.upsell_items) && orderData.upsell_items.length > 0) {
+      console.log('✅ Upsell items found in order:', orderData.upsell_items);
+      
+      // Konversi upsell_items ke format yang sama dengan order_items
+      const upsellItems = orderData.upsell_items.map((upsell, index) => ({
+        id: `upsell-${index}`,
+        order_id: orderData.id,
+        product_id: upsell.product_id || null,
+        product_name: upsell.name || 'Produk Upsell',
+        quantity: upsell.quantity || 1,
+        price: upsell.price || 0,
+        total: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+        discount_percentage: upsell.discount_percentage || 0,
+        original_price: upsell.price || 0,
+        discounted_price: upsell.discounted_price || upsell.price || 0,
+        subtotal: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+        is_upsell: true,
+        from_upsell: true,
+        has_discount: upsell.has_discount || false
+      }));
+      
+      // Gabungkan semua item (order_items + upsell_items)
+      allItems = [...allItems, ...upsellItems];
+      console.log('✅ Combined items:', allItems);
+    }
+    
+    setItems(allItems);
+    
+    // Step 4: Ambil alamat
+    if (orderData.address_id) {
+      const { data: addressData } = await supabase
+        .from('member_addresses')
+        .select('*')
+        .eq('id', orderData.address_id)
+        .single();
+      if (addressData) setAddress(addressData);
+    }
+    
+    // Step 5: Ambil delivery assignment
+    let deliveryData = null;
+    if (orderData.delivery_type === 'internal') {
+      console.log('Fetching delivery assignment for order:', id);
+      const { data: dd } = await supabase
+        .from('delivery_assignments')
+        .select('*, courier:users(id, email, full_name, phone)')
+        .eq('order_id', id)
         .maybeSingle();
       
-      if (cacheData?.polyline) {
-        console.log('✅ Using DISTANCE CACHE polyline (store → customer), length:', cacheData.polyline.length);
-        setRoutePolyline(cacheData.polyline);
+      if (dd) {
+        deliveryData = dd;
+        setDelivery(dd);
+        if (dd.courier) setCourier(dd.courier);
+        console.log('Delivery assignment found:', dd.id, 'status:', dd.status);
+        
+        const { data: points } = await supabase
+          .from('tracking_points')
+          .select('*')
+          .eq('delivery_id', dd.id)
+          .order('recorded_at', { ascending: false })
+          .limit(1);
+        if (points && points[0]) {
+          console.log('Latest tracking point:', points[0]);
+          setCourierLocation([points[0].latitude, points[0].longitude]);
+        }
       } else {
-        console.log('❌ No polyline found in distance_cache');
+        console.log('No delivery assignment found');
+      }
+    }
+    
+    // Step 6: Ambil polyline
+    console.log('🔍 Fetching polyline...');
+    console.log('deliveryData?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
+    
+    if (deliveryData?.start_route_polyline) {
+      console.log('✅ Using START ROUTE polyline (kurir → customer)');
+      setRoutePolyline(deliveryData.start_route_polyline);
+    } else if (storeData?.id && orderData?.shipping_latitude && orderData?.shipping_longitude) {
+      let addressId = orderData.address_id;
+      if (!addressId && orderData.shipping_address) {
+        console.log('No address_id, searching by shipping_address:', orderData.shipping_address);
+        const { data: addrData } = await supabase
+          .from('member_addresses')
+          .select('id')
+          .eq('address_text', orderData.shipping_address)
+          .maybeSingle();
+        if (addrData) addressId = addrData.id;
+      }
+      
+      if (addressId) {
+        console.log('Fetching from distance_cache for store:', storeData.id, 'address:', addressId);
+        const { data: cacheData } = await supabase
+          .from('distance_cache')
+          .select('polyline')
+          .eq('store_id', storeData.id)
+          .eq('address_id', addressId)
+          .maybeSingle();
+        
+        if (cacheData?.polyline) {
+          console.log('✅ Using DISTANCE CACHE polyline (store → customer), length:', cacheData.polyline.length);
+          setRoutePolyline(cacheData.polyline);
+        } else {
+          console.log('❌ No polyline found in distance_cache');
+        }
+      } else {
+        console.log('❌ No address_id found');
       }
     } else {
-      console.log('❌ No address_id found');
+      console.log('❌ Conditions not met for polyline fetch');
     }
-  } else {
-    console.log('❌ Conditions not met for polyline fetch');
-  }
-  
-  setLoading(false);
-  console.log('===== FETCH COMPLETE =====');
-};
+    
+    setLoading(false);
+    console.log('===== FETCH COMPLETE =====');
+  };
 
   // ========== REALTIME SUBSCRIPTION ==========
   useEffect(() => {
@@ -228,17 +227,13 @@ export default function MemberOrderDetail() {
         if (isTrackingActive === 'timeout') setIsTrackingActive(true);
         if (heading !== undefined) setCourierHeading(heading);
         
-        // Update lokasi kurir
-        console.log('🎯 Setting courier location to:', [lat, lng]);
         setCourierLocation([lat, lng]);
         
-        // Hitung ETA
         if (destLat && destLng && lat && lng) {
           const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
           setEta(newEta);
         }
         
-        // Update map center
         if (mapRef.current && lat && lng) {
           mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
         }
@@ -257,18 +252,17 @@ export default function MemberOrderDetail() {
         }
       })
       .on('broadcast', { event: 'route-updated' }, (payload) => {
-    console.log('🔄 Route updated! New polyline received:', payload.payload);
-    const { polyline } = payload.payload;
-    if (polyline) {
-      console.log('✅ Updating route polyline to start route');
-      setRoutePolyline(polyline);
-    }
-  })
+        console.log('🔄 Route updated! New polyline received:', payload.payload);
+        const { polyline } = payload.payload;
+        if (polyline) {
+          console.log('✅ Updating route polyline to start route');
+          setRoutePolyline(polyline);
+        }
+      })
       .subscribe((status) => {
         console.log('📡 Realtime subscription status:', status);
       });
     
-    // Timeout detection
     statusCheckInterval = setInterval(() => {
       if (!isMounted) return;
       if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
@@ -290,7 +284,15 @@ export default function MemberOrderDetail() {
     const file = e.target.files[0];
     if (!file) return;
     
-    const confirmed = window.confirm(`Upload bukti transfer untuk pesanan #${order.order_number}?\n\nFile: ${file.name}\n\nPastikan bukti transfer sesuai dengan nominal Rp ${order.total_amount?.toLocaleString()}`);
+    // ✅ Gunakan final_total dengan fallback aman
+    const nominal = order.final_total || 
+      (order.total_amount || 0) + (order.shipping_cost || 0) - (order.voucher_discount || 0);
+    
+    const confirmed = window.confirm(
+      `Upload bukti transfer untuk pesanan #${order.order_number}?\n\n` +
+      `File: ${file.name}\n\n` +
+      `Pastikan bukti transfer sesuai dengan nominal Rp ${finalTotal.toLocaleString()}`
+    );
     if (!confirmed) return;
     
     if (file.size > 2 * 1024 * 1024) {
@@ -397,22 +399,22 @@ export default function MemberOrderDetail() {
   const canUpload = order?.status === 'pending' && !order?.payment_proof_url;
   const canCancel = order?.status === 'pending';
   const canRequestCancellation = ['paid', 'processing'].includes(order?.status);
+
   // ========== HITUNG SUBTOTAL ==========
-// total_amount = total cart items (SEBELUM ongkir & voucher)
-const cartSubtotal = order?.total_amount || 0;
+  // total_amount = total cart items (SEBELUM ongkir & voucher)
+  const cartSubtotal = order?.total_amount || 0;
 
-// Hitung total upsell dari upsell_items
-const upsellItems = order?.upsell_items || [];
-const upsellTotal = upsellItems.reduce((sum, item) => {
-  const price = item.discounted_price || item.price;
-  return sum + (price * item.quantity);
-}, 0);
+  // Hitung total upsell dari upsell_items
+  const upsellItems = order?.upsell_items || [];
+  const upsellTotal = upsellItems.reduce((sum, item) => {
+    const price = item.discounted_price || item.price || 0;
+    return sum + (price * (item.quantity || 1));
+  }, 0);
 
-const subtotal = cartSubtotal + upsellTotal;
-
-const shippingCost = order?.shipping_cost || 0;
-const voucherDiscount = order?.voucher_discount || 0;
-const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDiscount);
+  const subtotal = cartSubtotal + upsellTotal;
+  const shippingCost = order?.shipping_cost || 0;
+  const voucherDiscount = order?.voucher_discount || 0;
+  const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDiscount);
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
   if (!order) return <div className="bg-black min-h-screen text-white p-8 text-center">Pesanan tidak ditemukan</div>;
@@ -468,7 +470,7 @@ const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDisco
             )}
           </div>
 
-                    {/* ========== TAB DETAIL ========== */}
+          {/* ========== TAB DETAIL ========== */}
           {activeTab === 'detail' && (
             <div className="space-y-6">
               <div className="grid md:grid-cols-2 gap-6">
@@ -477,110 +479,103 @@ const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDisco
                   <div className="bg-gray-800/50 rounded-lg p-3 space-y-1">
                     
                     {/* ===== 1. PRODUK DARI ORDER_ITEMS + UPSEL ===== */}
-{items.map(item => {
-  const isUpsell = item.is_upsell || item.from_upsell || false;
-  
-  // CEK APAKAH PRODUK PUNYA DISKON
-  const hasDiscount = item.discount_percentage && item.discount_percentage > 0;
-  const originalPrice = item.original_price || item.price;
-  const displayPrice = item.discounted_price || item.price;
-  const totalPerItem = displayPrice * item.quantity;
-  
-  // Tentukan warna: 
-  // - upsell dengan diskon → kuning + coretan
-  // - upsell tanpa diskon → kuning (tanpa coretan)
-  // - produk normal dengan diskon → hijau + coretan
-  // - produk normal tanpa diskon → putih
-  let priceColor = 'text-white';
-  let discountText = null;
-  
-  if (isUpsell) {
-    priceColor = 'text-yellow-500';
-    // Jika upsell memiliki diskon, tampilkan coretan + diskon
-    if (hasDiscount) {
-      const discountPerItem = originalPrice - displayPrice;
-      discountText = (
-        <div className="text-xs text-yellow-500">
-          <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
-          <span className="ml-1">-Rp {(discountPerItem * item.quantity).toLocaleString()}</span>
-        </div>
-      );
-    }
-  } else if (hasDiscount) {
-    priceColor = 'text-green-400';
-    const discountPerItem = originalPrice - displayPrice;
-    discountText = (
-      <div className="text-xs text-green-400">
-        <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
-        <span className="ml-1">-Rp {(discountPerItem * item.quantity).toLocaleString()}</span>
-      </div>
-    );
-  }
-  
-  return (
-    <div key={item.id} className={`flex justify-between text-sm border-b border-white/5 pb-1 ${isUpsell ? 'text-yellow-500' : ''}`}>
-      <span>
-        {isUpsell && <span className="text-yellow-500">+ </span>}
-        {item.product_name} x{item.quantity}
-      </span>
-      <div className="text-right">
-        <span className={priceColor}>Rp {totalPerItem.toLocaleString()}</span>
-        {discountText}
-      </div>
-    </div>
-  );
-})}
+                    {items.map(item => {
+                      const isUpsell = item.is_upsell || item.from_upsell || false;
+                      
+                      // CEK APAKAH PRODUK PUNYA DISKON
+                      const hasDiscount = item.discount_percentage && item.discount_percentage > 0;
+                      const originalPrice = item.original_price || item.price || 0;
+                      const displayPrice = item.discounted_price || item.price || 0;
+                      const totalPerItem = displayPrice * (item.quantity || 1);
+                      
+                      // Tentukan warna
+                      let priceColor = 'text-white';
+                      let discountText = null;
+                      
+                      if (isUpsell) {
+                        priceColor = 'text-yellow-500';
+                        if (hasDiscount) {
+                          const discountPerItem = originalPrice - displayPrice;
+                          discountText = (
+                            <div className="text-xs text-yellow-500">
+                              <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
+                              <span className="ml-1">-Rp {(discountPerItem * (item.quantity || 1)).toLocaleString()}</span>
+                            </div>
+                          );
+                        }
+                      } else if (hasDiscount) {
+                        priceColor = 'text-green-400';
+                        const discountPerItem = originalPrice - displayPrice;
+                        discountText = (
+                          <div className="text-xs text-green-400">
+                            <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
+                            <span className="ml-1">-Rp {(discountPerItem * (item.quantity || 1)).toLocaleString()}</span>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div key={item.id} className={`flex justify-between text-sm border-b border-white/5 pb-1 ${isUpsell ? 'text-yellow-500' : ''}`}>
+                          <span>
+                            {isUpsell && <span className="text-yellow-500">+ </span>}
+                            {item.product_name} x{item.quantity}
+                          </span>
+                          <div className="text-right">
+                            <span className={priceColor}>Rp {totalPerItem.toLocaleString()}</span>
+                            {discountText}
+                          </div>
+                        </div>
+                      );
+                    })}
 
                     {/* ===== 2. TOTAL DISKON PRODUK ===== */}
-{(() => {
-  let totalProductDiscount = 0;
-  let hasAnyDiscount = false;
-  
-  items.forEach(item => {
-    const originalPrice = item.original_price || item.price;
-    const displayPrice = item.discounted_price || item.price;
-    if (displayPrice < originalPrice) {
-      hasAnyDiscount = true;
-      const discountPerItem = originalPrice - displayPrice;
-      totalProductDiscount += discountPerItem * item.quantity;
-    }
-  });
-  
-  return hasAnyDiscount ? (
-    <div className="flex justify-between text-green-400 text-sm border-t border-white/10 pt-1">
-      <span>Total Diskon Produk</span>
-      <span>-Rp {totalProductDiscount.toLocaleString()}</span>
-    </div>
-  ) : null;
-})()}
+                    {(() => {
+                      let totalProductDiscount = 0;
+                      let hasAnyDiscount = false;
+                      
+                      items.forEach(item => {
+                        const originalPrice = item.original_price || item.price || 0;
+                        const displayPrice = item.discounted_price || item.price || 0;
+                        if (displayPrice < originalPrice && displayPrice > 0) {
+                          hasAnyDiscount = true;
+                          const discountPerItem = originalPrice - displayPrice;
+                          totalProductDiscount += discountPerItem * (item.quantity || 1);
+                        }
+                      });
+                      
+                      return hasAnyDiscount ? (
+                        <div className="flex justify-between text-green-400 text-sm border-t border-white/10 pt-1">
+                          <span>Total Diskon Produk</span>
+                          <span>-Rp {totalProductDiscount.toLocaleString()}</span>
+                        </div>
+                      ) : null;
+                    })()}
 
-{/* ===== 3. SUBTOTAL ===== */}
-<div className="flex justify-between text-sm pt-2 border-t border-white/10">
-  <span>Subtotal</span>
-  <span>Rp {subtotal.toLocaleString()}</span>
-</div>
+                    {/* ===== 3. SUBTOTAL ===== */}
+                    <div className="flex justify-between text-sm pt-2 border-t border-white/10">
+                      <span>Subtotal</span>
+                      <span>Rp {subtotal.toLocaleString()}</span>
+                    </div>
 
-{/* ===== 4. ONGKOS KIRIM ===== */}
-<div className="flex justify-between text-sm">
-  <span>Ongkos Kirim</span>
-  <span>Rp {(order.shipping_cost || 0).toLocaleString()}</span>
-</div>
+                    {/* ===== 4. ONGKOS KIRIM ===== */}
+                    <div className="flex justify-between text-sm">
+                      <span>Ongkos Kirim</span>
+                      <span>Rp {(order.shipping_cost || 0).toLocaleString()}</span>
+                    </div>
 
-{/* ===== 5. DISKON VOUCHER ===== */}
-{(order.voucher_discount || 0) > 0 && (
-  <div className="flex justify-between text-green-400 text-sm">
-    <span>Diskon Voucher</span>
-    <span>-Rp {(order.voucher_discount || 0).toLocaleString()}</span>
-  </div>
-)}
+                    {/* ===== 5. DISKON VOUCHER ===== */}
+                    {(order.voucher_discount || 0) > 0 && (
+                      <div className="flex justify-between text-green-400 text-sm">
+                        <span>Diskon Voucher</span>
+                        <span>-Rp {(order.voucher_discount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
 
-{/* ===== 6. TOTAL AKHIR ===== */}
-<div className="flex justify-between font-bold text-lg pt-2 border-t border-white/10">
-  <span>Total</span>
-  <span className="text-yellow-500">
-    Rp {(finalTotal).toLocaleString()}
-  </span>
-</div>
+                    {/* ===== 6. TOTAL AKHIR ===== */}
+                    <div className="flex justify-between font-bold text-lg pt-2 border-t border-white/10">
+                      <span>Total</span>
+                      <span className="text-yellow-500">Rp {finalTotal.toLocaleString()}</span>
+                    </div>
 
                     {/* ===== 7. CATATAN (jika ada) ===== */}
                     {order.notes && (
@@ -590,20 +585,15 @@ const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDisco
                     )}
                   </div>
 
-                  {/* ===== 8. RINGKASAN VOUCHER YANG DIPAKAI ===== */}
+                  {/* ===== 8. VOUCHER YANG DIGUNAKAN ===== */}
                   {order.selected_vouchers && order.selected_vouchers.length > 0 && (
                     <div className="mt-4 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
                       <h4 className="text-xs font-semibold text-green-400 mb-1">🎫 Voucher Digunakan</h4>
-                      {order.selected_vouchers.map((voucherId, index) => {
-                        // Cari nama voucher dari data yang tersimpan (atau tampilkan ID)
-                        // Karena kita tidak simpan nama voucher di order, kita tampilkan ID saja
-                        // Idealnya simpan nama voucher juga di order_vouchers
-                        return (
-                          <div key={index} className="text-xs text-gray-300">
-                            Voucher #{voucherId.substring(0, 8)}
-                          </div>
-                        );
-                      })}
+                      {order.selected_vouchers.map((voucherId, index) => (
+                        <div key={index} className="text-xs text-gray-300">
+                          Voucher #{voucherId.substring(0, 8)}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -628,7 +618,14 @@ const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDisco
                   <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
                   <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
                 </div>
-                <p className="text-sm mt-2">Nominal: <span className="font-bold text-yellow-500">Rp {order.total_amount.toLocaleString()}</span></p>
+                
+                {/* ✅ Gunakan final_total dengan fallback aman */}
+                <p className="text-sm mt-2">
+                  Nominal: <span className="font-bold text-yellow-500">
+                    Rp {finalTotal.toLocaleString()}
+                  </span>
+                </p>
+                
                 {canUpload && (
                   <div className="mt-4">
                     <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer w-fit hover:bg-yellow-600 transition">

@@ -391,36 +391,56 @@ export default function CheckoutPage() {
       }
       
       // ========== HITUNG TOTAL ==========
-      const subtotal = getCurrentSubtotal();
-      // ✅ effectiveShipping = shippingCost (TIDAK DIUBAH)
-      const effectiveShipping = shippingCost;
-      const finalTotal = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
-      
+const baseSubtotal = getCartSubtotal(cart);  // ← cart items dengan harga diskon
+
+// Hitung upsell total dengan harga diskon
+const upsellTotal = selectedUpsells.reduce((sum, item) => {
+  const hasDiscount = item.has_discount && item.discount_percentage > 0;
+  const displayPrice = hasDiscount 
+    ? Math.round(item.price * (1 - item.discount_percentage / 100))
+    : item.price;
+  return sum + (displayPrice * item.quantity);
+}, 0);
+
+const subtotal = baseSubtotal + upsellTotal;  // ← INI YANG DIKIRIM
+
       // ========== BUAT ORDER ==========
-      const orderData = {
-        store_id: cart.store_id,
-        member_id: memberId,
-        guest_name: guestName,
-        guest_phone: guestPhone,
-        shipping_address: shippingAddress,
-        shipping_latitude: shippingLat,
-        shipping_longitude: shippingLng,
-        shipping_cost: effectiveShipping,
-        notes: notes,
-        address_id: addressId,
-        voucher_discount: voucherDiscount,
-        final_total: finalTotal,
-        upsell_items: selectedUpsells.map(item => ({
-          product_id: item.product_id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          has_discount: item.has_discount || false,
-          discount_percentage: item.discount_percentage || 0,
-          from_upsell: true
-        })),
-        selected_vouchers: selectedVouchers.map(v => v.id)
-      };
+const orderData = {
+  store_id: cart.store_id,
+  member_id: memberId,
+  guest_name: guestName,
+  guest_phone: guestPhone,
+  shipping_address: shippingAddress,
+  shipping_latitude: shippingLat,
+  shipping_longitude: shippingLng,
+  shipping_cost: effectiveShipping,
+  notes: notes,
+  address_id: addressId,
+  voucher_discount: voucherDiscount,
+  //final_total: finalTotal,
+  // ✅ KIRIM total_amount (cart saja, tanpa upsell)
+  total_amount: baseSubtotal,  // ← PASTIKAN INI TERKIRIM
+  // ✅ KIRIM subtotal (cart + upsell dengan harga diskon)
+  subtotal: subtotal,          // ← TAMBAHKAN INI
+  upsell_items: selectedUpsells.map(item => {
+    const hasDiscount = item.has_discount && item.discount_percentage > 0;
+    const discountedPrice = hasDiscount 
+      ? Math.round(item.price * (1 - item.discount_percentage / 100))
+      : item.price;
+    
+    return {
+      product_id: item.product_id,
+      name: item.name,
+      price: item.price,
+      discounted_price: discountedPrice,
+      quantity: item.quantity,
+      has_discount: item.has_discount || false,
+      discount_percentage: item.discount_percentage || 0,
+      from_upsell: true
+    };
+  }),
+  selected_vouchers: selectedVouchers.map(v => v.id)
+};
       
       const order = await createOrder(orderData, cart.items);
       
