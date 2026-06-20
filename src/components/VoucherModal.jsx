@@ -15,19 +15,22 @@ export default function VoucherModal({
   subtotal = 0,
   shippingCost = 0
 }) {
-  const [selectedIds, setSelectedIds] = useState(selectedVoucherIds);
+  // State internal untuk pilihan sementara
+  const [selectedIds, setSelectedIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Reset selected IDs ketika modal dibuka
+  // Reset state ketika modal DIBUKA (bukan setiap kali selectedVoucherIds berubah)
   useEffect(() => {
     if (isOpen) {
-      setSelectedIds(selectedVoucherIds);
+      // Hanya set dari props saat modal dibuka
+      setSelectedIds([...selectedVoucherIds]);
       setError('');
     }
-  }, [isOpen, selectedVoucherIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // ← HANYA bergantung pada isOpen, bukan selectedVoucherIds
 
-  // Toggle pilihan voucher
+  // Toggle pilihan voucher (stabil, tidak override)
   const toggleVoucher = (voucherId) => {
     setSelectedIds(prev => {
       if (prev.includes(voucherId)) {
@@ -40,17 +43,22 @@ export default function VoucherModal({
 
   // Handle apply voucher
   const handleApply = () => {
-  setLoading(true);
-  setError('');
-  try {
-    onApply(selectedIds); // Bisa kirim array kosong
-    onClose();
-  } catch (err) {
-    setError(err.message || 'Gagal menerapkan voucher');
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+    setError('');
+    try {
+      onApply(selectedIds); // Bisa kirim array kosong
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Gagal menerapkan voucher');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bersihkan semua pilihan
+  const handleClearAll = () => {
+    setSelectedIds([]);
+  };
 
   // Format rupiah
   const formatRupiah = (amount) => {
@@ -230,36 +238,37 @@ export default function VoucherModal({
           )}
         </div>
 
-       {/* Footer */}
-<div className="p-4 border-t border-white/10">
-  {error && (
-    <p className="text-red-400 text-sm mb-2">{error}</p>
-  )}
-  <div className="flex gap-3">
-    {/* Tombol Bersihkan Semua */}
-    <button
-      onClick={() => setSelectedIds([])}
-      disabled={selectedIds.length === 0}
-      className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition disabled:opacity-50 text-sm"
-    >
-      ✕ Bersihkan
-    </button>
-    
-    <button
-  onClick={handleApply}
-  disabled={loading}
-  className="flex-1 bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
->
-  {loading ? 'Memproses...' : `Pakai Voucher (${selectedIds.length})`}
-</button>
-    <button
-      onClick={onClose}
-      className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
-    >
-      Tutup
-    </button>
-  </div>
-</div>
+        {/* Footer */}
+        <div className="p-4 border-t border-white/10">
+          {error && (
+            <p className="text-red-400 text-sm mb-2">{error}</p>
+          )}
+          <div className="flex gap-3">
+            {/* Tombol Bersihkan Semua */}
+            <button
+              onClick={handleClearAll}
+              disabled={selectedIds.length === 0}
+              className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition disabled:opacity-50 text-sm"
+            >
+              ✕ Bersihkan
+            </button>
+            
+            <button
+              onClick={handleApply}
+              disabled={loading}
+              className="flex-1 bg-yellow-500 text-black font-semibold py-2 rounded-lg hover:bg-yellow-600 transition disabled:opacity-50"
+            >
+              {loading ? 'Memproses...' : `Pakai Voucher (${selectedIds.length})`}
+            </button>
+            
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -91,7 +91,7 @@ export default function CheckoutPage() {
     if (upsells.length > 1) {
       upsellIntervalRef.current = setInterval(() => {
         setCurrentUpsellIndex(prev => (prev + 1) % upsells.length);
-      }, 3000);
+      }, 4000);
       return () => clearInterval(upsellIntervalRef.current);
     }
   }, [upsells.length]);
@@ -134,10 +134,10 @@ export default function CheckoutPage() {
     if (!store) return;
     setUpsellLoading(true);
     try {
-      // Ambil produk dengan is_upsell = true
+      // ✅ AMBIL has_discount dan discount_percentage dari database
       const { data: products, error } = await supabase
         .from('products')
-        .select('id, name, description, price, image_url, stock')
+        .select('id, name, description, price, image_url, stock, has_discount, discount_percentage')
         .eq('store_id', store.id)
         .eq('is_upsell', true)
         .eq('is_active', true)
@@ -152,7 +152,9 @@ export default function CheckoutPage() {
         description: p.description || '',
         price: p.price,
         image_url: p.image_url,
-        stock: p.stock,
+        stock: p.stock || 0,
+        has_discount: p.has_discount || false,
+        discount_percentage: p.discount_percentage || 0,
         products: {
           name: p.name,
           image_url: p.image_url
@@ -161,7 +163,6 @@ export default function CheckoutPage() {
       
       setUpsells(formattedUpsells);
       
-      // Bonus
       const bonusData = await getBonuses(store.id);
       setBonuses(bonusData);
     } catch (error) {
@@ -187,24 +188,47 @@ export default function CheckoutPage() {
   // ========== GET CURRENT SUBTOTAL ==========
   const getCurrentSubtotal = () => {
     const baseSubtotal = getCartSubtotal(cart);
-    const upsellTotal = selectedUpsells.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // ✅ Hitung subtotal upsell dengan harga DISKON (bukan harga asli)
+    const upsellTotal = selectedUpsells.reduce((sum, item) => {
+      const hasDiscount = item.has_discount && item.discount_percentage > 0;
+      const displayPrice = hasDiscount 
+        ? Math.round(item.price * (1 - item.discount_percentage / 100))
+        : item.price;
+      return sum + (displayPrice * item.quantity);
+    }, 0);
+    
     return baseSubtotal + upsellTotal;
   };
 
-  // ========== HANDLE TOGGLE UPSEL ==========
-  const handleToggleUpsell = (upsell) => {
+  // ========== HANDLE QUANTITY UPSEL ==========
+  const handleUpsellQuantity = (upsell, delta) => {
     setSelectedUpsells(prev => {
       const existing = prev.find(u => u.product_id === upsell.product_id);
+      
       if (existing) {
-        return prev.filter(u => u.product_id !== upsell.product_id);
+        const newQuantity = existing.quantity + delta;
+        if (newQuantity <= 0) {
+          return prev.filter(u => u.product_id !== upsell.product_id);
+        }
+        return prev.map(u => 
+          u.product_id === upsell.product_id 
+            ? { ...u, quantity: newQuantity }
+            : u
+        );
+      } else if (delta > 0) {
+        return [...prev, {
+          product_id: upsell.product_id,
+          name: upsell.title,
+          price: upsell.price,
+          quantity: 1,
+          image_url: upsell.image_url || null,
+          has_discount: upsell.has_discount || false,
+          discount_percentage: upsell.discount_percentage || 0,
+          from_upsell: true
+        }];
       }
-      return [...prev, {
-        product_id: upsell.product_id,
-        name: upsell.title,
-        price: upsell.price,
-        quantity: 1,
-        image_url: upsell.image_url || null
-      }];
+      return prev;
     });
   };
 
@@ -368,7 +392,8 @@ export default function CheckoutPage() {
       
       // ========== HITUNG TOTAL ==========
       const subtotal = getCurrentSubtotal();
-      const effectiveShipping = shippingDiscounted ? 0 : shippingCost;
+      // ✅ effectiveShipping = shippingCost (TIDAK DIUBAH)
+      const effectiveShipping = shippingCost;
       const finalTotal = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
       
       // ========== BUAT ORDER ==========
@@ -385,7 +410,15 @@ export default function CheckoutPage() {
         address_id: addressId,
         voucher_discount: voucherDiscount,
         final_total: finalTotal,
-        upsell_items: selectedUpsells,
+        upsell_items: selectedUpsells.map(item => ({
+          product_id: item.product_id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          has_discount: item.has_discount || false,
+          discount_percentage: item.discount_percentage || 0,
+          from_upsell: true
+        })),
         selected_vouchers: selectedVouchers.map(v => v.id)
       };
       
@@ -393,7 +426,7 @@ export default function CheckoutPage() {
       
       // ========== REDIRECT ==========
       if (user) {
-        navigate(`/member/orders/${order.id}`);
+        navigate(`/member/order/${order.id}`);
       } else {
         navigate(`/track-order/${order.id}`);
       }
@@ -419,10 +452,147 @@ export default function CheckoutPage() {
 
   // ========== HITUNG TOTAL ==========
   const baseSubtotal = getCartSubtotal(cart);
-  const upsellTotal = selectedUpsells.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  
+  // ✅ Hitung upsell total dengan harga diskon
+  const upsellTotal = selectedUpsells.reduce((sum, item) => {
+    const hasDiscount = item.has_discount && item.discount_percentage > 0;
+    const displayPrice = hasDiscount 
+      ? Math.round(item.price * (1 - item.discount_percentage / 100))
+      : item.price;
+    return sum + (displayPrice * item.quantity);
+  }, 0);
+  
   const subtotal = baseSubtotal + upsellTotal;
-  const effectiveShipping = shippingDiscounted ? 0 : shippingCost;
+  const effectiveShipping = shippingCost; // TIDAK DIUBAH
   const total = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
+
+  // ========== RENDER ITEM UPSEL PER SLIDE (DIPERBAIKI - DESKTOP) ==========
+const renderUpsellItems = () => {
+  if (upsells.length === 0) return null;
+  
+  // Tampilkan 2 item di desktop (md ke atas), 1 item di mobile
+  const isDesktop = window.innerWidth >= 768;
+  const itemsPerSlide = isDesktop ? 2 : 1;
+  const totalSlides = Math.ceil(upsells.length / itemsPerSlide);
+  
+  return (
+    <div className="relative overflow-hidden">
+      <div 
+        className="flex transition-transform duration-700 ease-in-out"
+        style={{ transform: `translateX(-${currentUpsellIndex * 100}%)` }}
+      >
+        {Array.from({ length: totalSlides }).map((_, slideIndex) => {
+          const startIdx = slideIndex * itemsPerSlide;
+          const slideItems = upsells.slice(startIdx, startIdx + itemsPerSlide);
+          
+          return (
+            <div 
+              key={slideIndex} 
+              className={`flex-shrink-0 w-full px-1 grid gap-3 ${
+                isDesktop ? 'grid-cols-2' : 'grid-cols-1'
+              }`}
+            >
+              {slideItems.map(upsell => {
+                const selected = selectedUpsells.find(u => u.product_id === upsell.product_id);
+                const quantity = selected?.quantity || 0;
+                const hasDiscount = upsell.has_discount && upsell.discount_percentage > 0;
+                const displayPrice = hasDiscount 
+                  ? Math.round(upsell.price * (1 - upsell.discount_percentage / 100))
+                  : upsell.price;
+                
+                return (
+                  <div 
+                    key={upsell.product_id} 
+                    className={`bg-gray-800/50 rounded-xl p-3 border transition ${
+                      quantity > 0 ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/10'
+                    }`}
+                  >
+                    <div className={`flex items-center gap-3 ${isDesktop ? 'flex-row' : 'flex-row'}`}>
+                      {/* Image */}
+                      <div className={`rounded-lg overflow-hidden bg-gray-700 flex-shrink-0 ${
+                        isDesktop ? 'w-16 h-16' : 'w-14 h-14'
+                      }`}>
+                        {upsell.image_url ? (
+                          <img src={upsell.image_url} alt={upsell.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-500 text-[8px]">No img</div>
+                        )}
+                      </div>
+                      
+                      {/* Info - lebih luas di desktop */}
+                      <div className={`flex-1 min-w-0 ${isDesktop ? 'space-y-0.5' : ''}`}>
+                        <p className={`font-medium ${isDesktop ? 'text-sm' : 'text-xs'} line-clamp-1`}>
+                          {upsell.title}
+                        </p>
+                        <div className={`flex items-center gap-2 ${isDesktop ? 'flex-row' : 'flex-wrap'}`}>
+                          <span className={`${isDesktop ? 'text-sm' : 'text-xs'} font-bold text-yellow-500`}>
+                            Rp {displayPrice.toLocaleString()}
+                          </span>
+                          {hasDiscount && (
+                            <span className={`${isDesktop ? 'text-xs' : 'text-[10px]'} text-gray-500 line-through`}>
+                              Rp {upsell.price.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Quantity Controls - desktop lebih besar dan rapi */}
+                      <div className={`flex items-center gap-1 flex-shrink-0 ${
+                        isDesktop ? 'ml-2' : ''
+                      }`}>
+                        <button
+                          onClick={() => handleUpsellQuantity(upsell, -1)}
+                          className={`rounded-full flex items-center justify-center transition ${
+                            quantity > 0 
+                              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                              : 'bg-gray-600/30 text-gray-500 cursor-not-allowed'
+                          } ${isDesktop ? 'w-8 h-8' : 'w-6 h-6'}`}
+                          disabled={quantity === 0}
+                        >
+                          <Minus size={isDesktop ? 16 : 12} />
+                        </button>
+                        
+                        <span className={`text-center font-medium ${
+                          isDesktop ? 'w-6 text-sm' : 'w-4 text-xs'
+                        }`}>
+                          {quantity}
+                        </span>
+                        
+                        <button
+                          onClick={() => handleUpsellQuantity(upsell, 1)}
+                          className={`rounded-full bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 flex items-center justify-center transition ${
+                            isDesktop ? 'w-8 h-8' : 'w-6 h-6'
+                          }`}
+                        >
+                          <Plus size={isDesktop ? 16 : 12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Indicator dots */}
+      {totalSlides > 1 && (
+        <div className="flex justify-center gap-1.5 mt-3">
+          {Array.from({ length: totalSlides }).map((_, idx) => (
+            <button 
+              key={idx} 
+              onClick={() => setCurrentUpsellIndex(idx)} 
+              className={`w-1.5 h-1.5 rounded-full transition ${
+                idx === currentUpsellIndex ? 'bg-yellow-500' : 'bg-gray-600'
+              }`} 
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
 
@@ -509,7 +679,7 @@ export default function CheckoutPage() {
           {/* ========== KOLOM KANAN: RINGKASAN ========== */}
           <div className="space-y-4">
             
-            {/* 1. UPSELING (CAROUSEL AUTOPLAY) */}
+            {/* 1. UPSELING (CAROUSEL AUTOPLAY - RESPONSIVE) */}
             {upsells.length > 0 && (
               <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
@@ -519,52 +689,7 @@ export default function CheckoutPage() {
                     ({upsells.length} produk)
                   </span>
                 </h3>
-                <div className="relative overflow-hidden">
-                  <div 
-                    className="flex transition-transform duration-700 ease-in-out"
-                    style={{ transform: `translateX(-${currentUpsellIndex * 100}%)` }}
-                  >
-                    {upsells.map(upsell => {
-                      const isSelected = selectedUpsells.some(u => u.product_id === upsell.product_id);
-                      return (
-                        <div key={upsell.product_id} className="flex-shrink-0 w-full px-1">
-                          <div className={`bg-gray-800/50 rounded-xl p-3 border transition ${
-                            isSelected ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/10'
-                          }`}>
-                            <div className="flex items-center gap-3">
-                              <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
-                                {upsell.image_url ? (
-                                  <img src={upsell.image_url} alt={upsell.title} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">No Image</div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm line-clamp-1">{upsell.title}</p>
-                                <p className="text-yellow-500 text-sm font-bold">Rp {upsell.price.toLocaleString()}</p>
-                              </div>
-                              <button
-                                onClick={() => handleToggleUpsell(upsell)}
-                                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                                  isSelected ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
-                                }`}
-                              >
-                                {isSelected ? '✕ Batal' : '+ Tambah'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {upsells.length > 1 && (
-                    <div className="flex justify-center gap-1.5 mt-2">
-                      {upsells.map((_, idx) => (
-                        <button key={idx} onClick={() => setCurrentUpsellIndex(idx)} className={`w-1.5 h-1.5 rounded-full transition ${idx === currentUpsellIndex ? 'bg-yellow-500' : 'bg-gray-600'}`} />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {renderUpsellItems()}
               </div>
             )}
 
@@ -624,32 +749,93 @@ export default function CheckoutPage() {
             <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
               <h2 className="font-semibold mb-3">Ringkasan Pesanan</h2>
               <div className="space-y-2 text-sm">
-                {cart.items.map(item => (
-                  <div key={item.product_id} className="flex justify-between">
-                    <span>{item.name} x{item.quantity}</span>
-                    <span>Rp {(item.discounted_price * item.quantity).toLocaleString()}</span>
-                  </div>
-                ))}
                 
-                {selectedUpsells.map(item => (
-                  <div key={item.product_id} className="flex justify-between text-yellow-500">
-                    <span>+ {item.name}</span>
-                    <span>Rp {item.price.toLocaleString()}</span>
-                  </div>
-                ))}
+                {/* ===== 1. PRODUK DARI CART ===== */}
+                {cart.items.map(item => {
+                  const displayPrice = item.discounted_price || item.price;
+                  const totalPerItem = displayPrice * item.quantity;
+                  
+                  return (
+                    <div key={item.product_id} className="flex justify-between">
+                      <span>{item.name} x{item.quantity}</span>
+                      <span>Rp {totalPerItem.toLocaleString()}</span>
+                    </div>
+                  );
+                })}
+                
+                {/* ===== 2. PRODUK UPSEL ===== */}
+                {selectedUpsells.map(item => {
+                  const hasDiscount = item.has_discount && item.discount_percentage > 0;
+                  const displayPrice = hasDiscount 
+                    ? Math.round(item.price * (1 - item.discount_percentage / 100))
+                    : item.price;
+                  const totalPerItem = displayPrice * item.quantity;
+                  
+                  return (
+                    <div key={item.product_id} className="flex justify-between text-yellow-500">
+                      <span>+ {item.name} x{item.quantity}</span>
+                      <span>Rp {totalPerItem.toLocaleString()}</span>
+                    </div>
+                  );
+                })}
 
+                {/* ===== 3. TOTAL DISKON PRODUK ===== */}
+                {(() => {
+                  let totalProductDiscount = 0;
+                  let hasAnyDiscount = false;
+                  
+                  // Cart items
+                  cart.items.forEach(item => {
+                    const originalPrice = item.original_price || item.price;
+                    const displayPrice = item.discounted_price || item.price;
+                    if (displayPrice < originalPrice) {
+                      hasAnyDiscount = true;
+                      const discountPerItem = originalPrice - displayPrice;
+                      totalProductDiscount += discountPerItem * item.quantity;
+                    }
+                  });
+                  
+                  // Upsell items
+                  selectedUpsells.forEach(item => {
+                    if (item.has_discount && item.discount_percentage > 0) {
+                      hasAnyDiscount = true;
+                      const displayPrice = Math.round(item.price * (1 - item.discount_percentage / 100));
+                      const discountPerItem = item.price - displayPrice;
+                      totalProductDiscount += discountPerItem * item.quantity;
+                    }
+                  });
+                  
+                  return hasAnyDiscount ? (
+                    <div className="flex justify-between text-green-400 text-sm border-t border-white/10 pt-1">
+                      <span>Total Diskon Produk</span>
+                      <span>-Rp {totalProductDiscount.toLocaleString()}</span>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* ===== 4. SUBTOTAL ===== */}
                 <div className="flex justify-between text-sm border-t border-white/10 pt-2">
                   <span>Subtotal</span>
                   <span>Rp {subtotal.toLocaleString()}</span>
                 </div>
+
+                {/* ===== 5. ONGKOS KIRIM ===== */}
                 <div className="flex justify-between text-sm">
                   <span>Ongkos Kirim</span>
-                  <span className={shippingDiscounted ? 'line-through text-gray-500' : shippingCost > 0 ? 'text-yellow-500' : 'text-gray-500'}>
-                    {shippingDiscounted ? `Rp ${shippingCost.toLocaleString()}` : shippingCost > 0 ? `Rp ${shippingCost.toLocaleString()}` : 'Belum dihitung'}
+                  <span>
+                    {shippingCost > 0 ? (
+                      shippingDiscounted ? (
+                        <span className="line-through text-gray-500">Rp {shippingCost.toLocaleString()}</span>
+                      ) : (
+                        <span className="text-yellow-500">Rp {shippingCost.toLocaleString()}</span>
+                      )
+                    ) : (
+                      <span className="text-gray-500">Belum dihitung</span>
+                    )}
                   </span>
-                  {shippingDiscounted && <span className="text-green-400 text-xs ml-2">Gratis!</span>}
                 </div>
-                
+
+                {/* ===== 6. DISKON VOUCHER ===== */}
                 {voucherDiscount > 0 && (
                   <div className="flex justify-between text-green-400 text-sm">
                     <span>Diskon Voucher</span>
@@ -657,6 +843,7 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
+                {/* ===== 7. TOTAL AKHIR ===== */}
                 <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2 mt-2">
                   <span>Total</span>
                   <span className="text-yellow-500">
