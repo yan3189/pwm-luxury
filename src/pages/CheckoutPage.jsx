@@ -426,7 +426,7 @@ export default function CheckoutPage() {
       
       // ========== REDIRECT ==========
       if (user) {
-        navigate(`/member/order/${order.id}`);
+        navigate(`/member/orders/${order.id}`);
       } else {
         navigate(`/track-order/${order.id}`);
       }
@@ -466,21 +466,41 @@ export default function CheckoutPage() {
   const effectiveShipping = shippingCost; // TIDAK DIUBAH
   const total = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
 
-  // ========== RENDER ITEM UPSEL PER SLIDE (DIPERBAIKI - DESKTOP) ==========
+ // ================================================================
+// FUNGSI RENDER CAROUSEL UPSEL
+// ================================================================
 const renderUpsellItems = () => {
+  // Jika tidak ada produk upsell, tidak tampilkan apa-apa
   if (upsells.length === 0) return null;
   
-  // Tampilkan 2 item di desktop (md ke atas), 1 item di mobile
-  const isDesktop = window.innerWidth >= 768;
-  const itemsPerSlide = isDesktop ? 2 : 1;
+  // ================================================================
+  // [PENGATURAN 1] JUMLAH CARD PER SLIDE
+  // ================================================================
+  // ★★★ UBAH ANGKA 1 di sini untuk mengubah jumlah card per slide ★★★
+  // Saat ini: 1 card per slide (untuk semua ukuran layar)
+  const itemsPerSlide = 1;  // ← UBAH ANGKA INI jika ingin lebih dari 1
   const totalSlides = Math.ceil(upsells.length / itemsPerSlide);
   
   return (
-    <div className="relative overflow-hidden">
+    // ================================================================
+    // [PENGATURAN 2] KOTAK LUAR (Container Utama Carousel)
+    // ================================================================
+    // ★★★ UBAH class di sini untuk mengatur lebar, padding, dan overflow ★★★
+    <div className="relative overflow-hidden">  {/* ← KOTAK LUAR */}
+      
+      {/* ================================================================
+          [PENGATURAN 3] SLIDE WRAPPER (Container yang bergeser)
+          ================================================================ */}
+      {/* ★★★ UBAH class di sini untuk mengatur animasi geser ★★★ */}
       <div 
         className="flex transition-transform duration-700 ease-in-out"
         style={{ transform: `translateX(-${currentUpsellIndex * 100}%)` }}
       >
+        
+        {/* ================================================================
+            [PENGATURAN 4] PER SLIDE (Satu halaman carousel)
+            ================================================================ */}
+        {/* ★★★ UBAH class di sini untuk mengatur lebar slide & grid ★★★ */}
         {Array.from({ length: totalSlides }).map((_, slideIndex) => {
           const startIdx = slideIndex * itemsPerSlide;
           const slideItems = upsells.slice(startIdx, startIdx + itemsPerSlide);
@@ -488,95 +508,180 @@ const renderUpsellItems = () => {
           return (
             <div 
               key={slideIndex} 
-              className={`flex-shrink-0 w-full px-1 grid gap-3 ${
-                isDesktop ? 'grid-cols-2' : 'grid-cols-1'
-              }`}
+              className="flex-shrink-0 w-full px-1"  /* ← KOTAK PER SLIDE */
             >
-              {slideItems.map(upsell => {
-                const selected = selectedUpsells.find(u => u.product_id === upsell.product_id);
-                const quantity = selected?.quantity || 0;
-                const hasDiscount = upsell.has_discount && upsell.discount_percentage > 0;
-                const displayPrice = hasDiscount 
-                  ? Math.round(upsell.price * (1 - upsell.discount_percentage / 100))
-                  : upsell.price;
+              {/* ============================================================
+                  [PENGATURAN 5] GRID CARD (Baris card di dalam slide)
+                  ============================================================ */}
+              {/* ★★★ UBAH class di sini untuk mengatur jumlah kolom & jarak ★★★ */}
+              <div className="grid grid-cols-1 gap-3">  {/* ← GRID 1 KOLOM */}
                 
-                return (
-                  <div 
-                    key={upsell.product_id} 
-                    className={`bg-gray-800/50 rounded-xl p-3 border transition ${
-                      quantity > 0 ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/10'
-                    }`}
-                  >
-                    <div className={`flex items-center gap-3 ${isDesktop ? 'flex-row' : 'flex-row'}`}>
-                      {/* Image */}
-                      <div className={`rounded-lg overflow-hidden bg-gray-700 flex-shrink-0 ${
-                        isDesktop ? 'w-16 h-16' : 'w-14 h-14'
-                      }`}>
-                        {upsell.image_url ? (
-                          <img src={upsell.image_url} alt={upsell.title} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-500 text-[8px]">No img</div>
-                        )}
-                      </div>
-                      
-                      {/* Info - lebih luas di desktop */}
-                      <div className={`flex-1 min-w-0 ${isDesktop ? 'space-y-0.5' : ''}`}>
-                        <p className={`font-medium ${isDesktop ? 'text-sm' : 'text-xs'} line-clamp-1`}>
-                          {upsell.title}
-                        </p>
-                        <div className={`flex items-center gap-2 ${isDesktop ? 'flex-row' : 'flex-wrap'}`}>
-                          <span className={`${isDesktop ? 'text-sm' : 'text-xs'} font-bold text-yellow-500`}>
-                            Rp {displayPrice.toLocaleString()}
-                          </span>
-                          {hasDiscount && (
-                            <span className={`${isDesktop ? 'text-xs' : 'text-[10px]'} text-gray-500 line-through`}>
-                              Rp {upsell.price.toLocaleString()}
-                            </span>
+                {/* ============================================================
+                    [PENGATURAN 6] SATU CARD PRODUK (Kotak item)
+                    ============================================================ */}
+                {slideItems.map(upsell => {
+                  const selected = selectedUpsells.find(u => u.product_id === upsell.product_id);
+                  const quantity = selected?.quantity || 0;
+                  const hasDiscount = upsell.has_discount && upsell.discount_percentage > 0;
+                  const displayPrice = hasDiscount 
+                    ? Math.round(upsell.price * (1 - upsell.discount_percentage / 100))
+                    : upsell.price;
+                  
+                  return (
+                    // ★★★ [KOTAK DALAM] UBAH class di sini untuk mengatur:
+                    // - background (bg-gray-800/50)
+                    // - border (border-white/10)
+                    // - padding (p-3)
+                    // - border radius (rounded-xl)
+                    <div 
+                      key={upsell.product_id} 
+                      className={`bg-gray-800/50 rounded-xl p-3 border transition ${
+                        quantity > 0 ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/10'
+                      }`}
+                    >
+                      {/* ==========================================================
+                          [PENGATURAN 7] LAYOUT DALAM CARD (flex row)
+                          ========================================================== */}
+                      {/* ★★★ UBAH class di sini untuk mengatur:
+                          - gap (gap-3)
+                          - align (items-center)
+                          - direction (flex-row) */}
+                      <div className="flex items-center gap-3">
+                        
+                        {/* ========================================================
+                            [PENGATURAN 8] GAMBAR PRODUK
+                            ======================================================== */}
+                        {/* ★★★ UBAH class di sini untuk mengatur:
+                            - lebar (w-14)
+                            - tinggi (h-14)
+                            - border radius (rounded-lg)
+                            - background (bg-gray-700) */}
+                        <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-700 flex-shrink-0">
+                          {upsell.image_url ? (
+                            <img src={upsell.image_url} alt={upsell.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-500 text-[8px]">No img</div>
                           )}
                         </div>
+                        
+                        {/* ========================================================
+                            [PENGATURAN 9] INFO PRODUK (nama + harga)
+                            ======================================================== */}
+                        {/* ★★★ UBAH class di sini untuk mengatur:
+                            - flex (flex-1)
+                            - min-width (min-w-0)
+                            - spacing (space-y-0.5) */}
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          {/* Nama produk */}
+                          {/* ★★★ UBAH class di sini untuk mengatur:
+                              - ukuran font (text-sm)
+                              - weight (font-medium)
+                              - text overflow (line-clamp-1) */}
+                          <p className="text-sm font-medium line-clamp-1">
+                            {upsell.title}
+                          </p>
+                          
+                          {/* Harga */}
+                          {/* ★★★ UBAH class di sini untuk mengatur:
+                              - layout (flex items-center gap-2)
+                              - wrap (flex-wrap) */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Harga setelah diskon (warna kuning) */}
+                            <span className="text-sm font-bold text-yellow-500">
+                              Rp {displayPrice.toLocaleString()}
+                            </span>
+                            {/* Harga asli (coretan) - hanya muncul jika ada diskon */}
+                            {hasDiscount && (
+                              <span className="text-xs text-gray-500 line-through">
+                                Rp {upsell.price.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* ========================================================
+                            [PENGATURAN 10] TOMBOL + DAN - (Quantity Controls)
+                            ======================================================== */}
+                        {/* ★★★ UBAH class di sini untuk mengatur:
+                            - ukuran tombol (w-7 h-7 atau w-8 h-8)
+                            - border radius (rounded-full)
+                            - jarak antar tombol (gap-1) */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          
+                          {/* Tombol MINUS (-) */}
+                          {/* ★★★ UBAH class di sini untuk mengatur:
+                              - ukuran (w-7 h-7)
+                              - warna (bg-red-500/20)
+                              - ukuran icon (size={14}) */}
+                          <button
+                            onClick={() => handleUpsellQuantity(upsell, -1)}
+                            className={`w-7 h-7 rounded-full flex items-center justify-center transition ${
+                              quantity > 0 
+                                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                                : 'bg-gray-600/30 text-gray-500 cursor-not-allowed'
+                            }`}
+                            disabled={quantity === 0}
+                          >
+                            <Minus size={14} />  {/* ← UBAH size={14} untuk mengubah ikon */}
+                          </button>
+                          
+                          {/* Angka Quantity */}
+                          {/* ★★★ UBAH class di sini untuk mengatur:
+                              - lebar (w-5)
+                              - ukuran font (text-sm) */}
+                          <span className="w-5 text-center text-sm font-medium">
+                            {quantity}
+                          </span>
+                          
+                          {/* Tombol PLUS (+) */}
+                          {/* ★★★ UBAH class di sini untuk mengatur:
+                              - ukuran (w-7 h-7)
+                              - warna (bg-yellow-500/20)
+                              - ukuran icon (size={14}) */}
+                          <button
+                            onClick={() => handleUpsellQuantity(upsell, 1)}
+                            className="w-7 h-7 rounded-full bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 flex items-center justify-center transition"
+                          >
+                            <Plus size={14} />  {/* ← UBAH size={14} untuk mengubah ikon */}
+                          </button>
+                        </div>
+                        {/* ========================================================
+                            [AKHIR] TOMBOL + DAN -
+                            ======================================================== */}
+                        
                       </div>
+                      {/* ==========================================================
+                          [AKHIR] LAYOUT DALAM CARD
+                          ========================================================== */}
                       
-                      {/* Quantity Controls - desktop lebih besar dan rapi */}
-                      <div className={`flex items-center gap-1 flex-shrink-0 ${
-                        isDesktop ? 'ml-2' : ''
-                      }`}>
-                        <button
-                          onClick={() => handleUpsellQuantity(upsell, -1)}
-                          className={`rounded-full flex items-center justify-center transition ${
-                            quantity > 0 
-                              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
-                              : 'bg-gray-600/30 text-gray-500 cursor-not-allowed'
-                          } ${isDesktop ? 'w-8 h-8' : 'w-6 h-6'}`}
-                          disabled={quantity === 0}
-                        >
-                          <Minus size={isDesktop ? 16 : 12} />
-                        </button>
-                        
-                        <span className={`text-center font-medium ${
-                          isDesktop ? 'w-6 text-sm' : 'w-4 text-xs'
-                        }`}>
-                          {quantity}
-                        </span>
-                        
-                        <button
-                          onClick={() => handleUpsellQuantity(upsell, 1)}
-                          className={`rounded-full bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 flex items-center justify-center transition ${
-                            isDesktop ? 'w-8 h-8' : 'w-6 h-6'
-                          }`}
-                        >
-                          <Plus size={isDesktop ? 16 : 12} />
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                    // ============================================================
+                    // [AKHIR] SATU CARD PRODUK
+                    // ============================================================
+                  );
+                })}
+              </div>
+              {/* ============================================================
+                  [AKHIR] GRID CARD
+                  ============================================================ */}
             </div>
+            // ================================================================
+            // [AKHIR] PER SLIDE
+            // ================================================================
           );
         })}
       </div>
+      {/* ================================================================
+          [AKHIR] SLIDE WRAPPER
+          ================================================================ */}
       
-      {/* Indicator dots */}
+      {/* ================================================================
+          [PENGATURAN 11] INDICATOR DOTS (Titik-titik di bawah)
+          ================================================================ */}
+      {/* ★★★ UBAH class di sini untuk mengatur:
+          - jarak dari atas (mt-3)
+          - gap antar titik (gap-1.5)
+          - posisi (flex justify-center) */}
       {totalSlides > 1 && (
         <div className="flex justify-center gap-1.5 mt-3">
           {Array.from({ length: totalSlides }).map((_, idx) => (
@@ -590,7 +695,14 @@ const renderUpsellItems = () => {
           ))}
         </div>
       )}
+      {/* ================================================================
+          [AKHIR] INDICATOR DOTS
+          ================================================================ */}
+      
     </div>
+    // ================================================================
+    // [AKHIR] KOTAK LUAR
+    // ================================================================
   );
 };
 
