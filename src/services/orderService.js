@@ -6,6 +6,59 @@ import { supabase } from '../lib/supabase';
 import { clearCart } from './cartService';
 import { applyVouchersToOrder } from './voucherService';
 
+// ============================================================
+// GENERATE ORDER NUMBER - ORD/YYYYMMDD/XXXXX
+// ============================================================
+
+/**
+ * Generate order number dengan format ORD/YYYYMMDD/XXXXX
+ * - ORD = prefix tetap
+ * - YYYYMMDD = tanggal order (contoh: 20260621)
+ * - XXXXX = nomor urut transaksi hari itu (5 digit, mulai 00001)
+ */
+const generateOrderNumber = async () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const datePrefix = `${year}${month}${day}`;
+  const prefix = `ORD/${datePrefix}/`;
+  
+  // Cari order terakhir hari ini dengan format yang sama
+  const { data, error } = await supabase
+    .from('orders')
+    .select('order_number')
+    .ilike('order_number', `${prefix}%`)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  
+  if (error) {
+    console.error('Error generating order number:', error);
+    // Fallback: pakai timestamp + random
+    const random = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+    return `ORD/${datePrefix}/${random}`;
+  }
+  
+  let nextNumber = 1;
+  
+  if (data && data.length > 0) {
+    // Ambil angka terakhir dari order_number
+    const lastOrderNumber = data[0].order_number;
+    const parts = lastOrderNumber.split('/');
+    const lastSeq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastSeq)) {
+      nextNumber = lastSeq + 1;
+    }
+  }
+  
+  const seq = String(nextNumber).padStart(5, '0');
+  return `${prefix}${seq}`;
+};
+
+// ============================================================
+// CREATE ORDER
+// ============================================================
+
 /**
  * Membuat order baru dari checkout
  * @param {Object} orderData - Data order dari CheckoutPage
@@ -20,10 +73,29 @@ export async function createOrder(orderData, cartItems) {
     // ============================================================
     // STEP 1: BUAT ORDER DI TABEL orders
     // ============================================================
-    
-    // Generate order number
-    const orderNumber = `ORD-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    
+
+    // ✅ Generate order number dengan format ORD/YYYYMMDD/XXXXX
+    const orderNumber = await generateOrderNumber();
+
+    console.log('📋 Generated order number:', orderNumber);
+
+    // Hitung ulang final_total jika tidak dikirim
+    let finalTotal = orderData.final_total;
+    if (!finalTotal || finalTotal === 0) {
+      const cartSubtotal = orderData.total_amount || 0;
+      const upsellItems = orderData.upsell_items || [];
+      const upsellTotal = upsellItems.reduce((sum, item) => {
+        const price = item.discounted_price || item.price || 0;
+        return sum + (price * (item.quantity || 1));
+      }, 0);
+      const subtotal = cartSubtotal + upsellTotal;
+      const shippingCost = orderData.shipping_cost || 0;
+      const voucherDiscount = orderData.voucher_discount || 0;
+      finalTotal = Math.max(0, subtotal + shippingCost - voucherDiscount);
+      
+      console.log('🔄 final_total dihitung ulang di server:', finalTotal);
+    }
+
     // Prepare order data
     const orderPayload = {
       order_number: orderNumber,
@@ -36,17 +108,19 @@ export async function createOrder(orderData, cartItems) {
       shipping_longitude: orderData.shipping_longitude,
       address_id: orderData.address_id || null,
       shipping_cost: orderData.shipping_cost || 0,
-      total_amount: calculateCartTotal(cartItems), // Hanya cart, tidak termasuk upsell
+      total_amount: orderData.total_amount || 0,
       voucher_discount: orderData.voucher_discount || 0,
-      final_total: orderData.final_total || 0,
+      final_total: finalTotal,
       notes: orderData.notes || null,
       payment_method: orderData.payment_method || 'manual_transfer',
       delivery_type: orderData.delivery_type || 'internal',
       status: 'pending',
-      upsell_items: orderData.upsell_items || [], // Simpan upsell_items sebagai JSONB
+      upsell_items: orderData.upsell_items || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
+
+    console.log('📊 ORDER PAYLOAD:', orderPayload);
 
     // Insert order
     const { data: order, error: orderError } = await supabase
@@ -61,6 +135,8 @@ export async function createOrder(orderData, cartItems) {
     }
 
     console.log('✅ Order created:', order.id);
+    console.log('✅ Order number:', order.order_number);
+    console.log('✅ final_total saved:', order.final_total);
 
     // ============================================================
     // STEP 2: SIMPAN ORDER ITEMS (DARI CART)
@@ -90,88 +166,85 @@ export async function createOrder(orderData, cartItems) {
 
     console.log('✅ Order items saved:', orderItems.length);
 
-        // ============================================================
-// STEP 3: SIMPAN VOUCHER YANG DIGUNAKAN (order_vouchers)
-// ============================================================
+    // ============================================================
+    // STEP 3: SIMPAN VOUCHER YANG DIGUNAKAN (order_vouchers)
+    // ============================================================
 
-const selectedVouchers = orderData.selected_vouchers || [];
-const memberId = orderData.member_id;
+    const selectedVouchers = orderData.selected_vouchers || [];
+    const memberId = orderData.member_id;
 
-if (selectedVouchers.length > 0) {
-  console.log('🎫 Saving selected vouchers:', selectedVouchers);
-  
-  const { data: voucherDetails, error: voucherError } = await supabase
-    .from('vouchers')
-    .select('id, name, type, value, max_discount')
-    .in('id', selectedVouchers);
+    if (selectedVouchers.length > 0) {
+      console.log('🎫 Saving selected vouchers:', selectedVouchers);
+      
+      const { data: voucherDetails, error: voucherError } = await supabase
+        .from('vouchers')
+        .select('id, name, type, value, max_discount')
+        .in('id', selectedVouchers);
 
-  if (voucherError) {
-    console.error('Error fetching voucher details:', voucherError);
-  }
+      if (voucherError) {
+        console.error('Error fetching voucher details:', voucherError);
+      }
 
-  // ============================================================
-  // 🔥 PERBAIKAN: Gunakan subtotal dari orderData (sudah dihitung di frontend)
-  // ============================================================
-  
-  // ✅ Gunakan subtotal yang sudah dihitung di CheckoutPage (cart + upsell dengan diskon)
-  const realSubtotal = orderData.subtotal || 0;
-  
-  // Fallback: hitung ulang jika subtotal tidak ada
-  let calculatedSubtotal = realSubtotal;
-  if (realSubtotal === 0) {
-    const cartSubtotal = orderData.total_amount || 0;
-    const upsellItems = orderData.upsell_items || [];
-    const upsellTotal = upsellItems.reduce((sum, item) => {
-      const price = item.discounted_price || item.price;
-      return sum + (price * item.quantity);
-    }, 0);
-    calculatedSubtotal = cartSubtotal + upsellTotal;
-  }
+      // ============================================================
+      // Hitung subtotal untuk diskon (cart + upsell)
+      // ============================================================
+      
+      const realSubtotal = orderData.subtotal || 0;
+      
+      let calculatedSubtotal = realSubtotal;
+      if (realSubtotal === 0) {
+        const cartSubtotal = orderData.total_amount || 0;
+        const upsellItems = orderData.upsell_items || [];
+        const upsellTotal = upsellItems.reduce((sum, item) => {
+          const price = item.discounted_price || item.price;
+          return sum + (price * item.quantity);
+        }, 0);
+        calculatedSubtotal = cartSubtotal + upsellTotal;
+      }
 
-  const shippingCost = orderData.shipping_cost || 0;
-  const totalForDiscount = (realSubtotal || calculatedSubtotal) + shippingCost;
+      const shippingCost = orderData.shipping_cost || 0;
+      const totalForDiscount = (realSubtotal || calculatedSubtotal) + shippingCost;
 
-  console.log('📊 Discount calculation:', { 
-    realSubtotal,
-    calculatedSubtotal,
-    shippingCost, 
-    totalForDiscount 
-  });
+      console.log('📊 Discount calculation:', { 
+        realSubtotal,
+        calculatedSubtotal,
+        shippingCost, 
+        totalForDiscount 
+      });
 
-  // Buat data untuk order_vouchers
-  const orderVouchers = (voucherDetails || []).map(voucher => {
-    let discountApplied = 0;
-    const baseForDiscount = realSubtotal || calculatedSubtotal;
+      // Buat data untuk order_vouchers
+      const orderVouchers = (voucherDetails || []).map(voucher => {
+        let discountApplied = 0;
+        const baseForDiscount = realSubtotal || calculatedSubtotal;
 
-    switch (voucher.type) {
-      case 'shipping_free':
-        discountApplied = shippingCost;
-        break;
-      case 'discount_percent':
-        // ✅ Gunakan baseForDiscount (sudah termasuk cart + upsell dengan diskon)
-        discountApplied = Math.round(baseForDiscount * (voucher.value / 100));
-        if (voucher.max_discount && discountApplied > voucher.max_discount) {
-          discountApplied = voucher.max_discount;
+        switch (voucher.type) {
+          case 'shipping_free':
+            discountApplied = shippingCost;
+            break;
+          case 'discount_percent':
+            discountApplied = Math.round(baseForDiscount * (voucher.value / 100));
+            if (voucher.max_discount && discountApplied > voucher.max_discount) {
+              discountApplied = voucher.max_discount;
+            }
+            break;
+          case 'discount_nominal':
+            discountApplied = voucher.value;
+            break;
+          default:
+            discountApplied = 0;
         }
-        break;
-      case 'discount_nominal':
-        discountApplied = voucher.value;
-        break;
-      default:
-        discountApplied = 0;
-    }
 
-    discountApplied = Math.min(discountApplied, totalForDiscount);
+        discountApplied = Math.min(discountApplied, totalForDiscount);
 
-    console.log(`🎫 Voucher ${voucher.name}: type=${voucher.type}, value=${voucher.value}, base=${baseForDiscount}, discount=${discountApplied}`);
+        console.log(`🎫 Voucher ${voucher.name}: type=${voucher.type}, value=${voucher.value}, base=${baseForDiscount}, discount=${discountApplied}`);
 
-    return {
-      order_id: order.id,
-      voucher_id: voucher.id,
-      voucher_name: voucher.name,
-      discount_applied: discountApplied
-    };
-  });
+        return {
+          order_id: order.id,
+          voucher_id: voucher.id,
+          voucher_name: voucher.name,
+          discount_applied: discountApplied
+        };
+      });
 
       // Insert ke order_vouchers
       if (orderVouchers.length > 0) {
@@ -187,7 +260,7 @@ if (selectedVouchers.length > 0) {
       }
 
       // ============================================================
-      // STEP 4: UPDATE member_vouchers.is_used (hanya untuk non-global)
+      // STEP 4: UPDATE member_vouchers.is_used
       // ============================================================
       if (memberId) {
         for (const voucherId of selectedVouchers) {

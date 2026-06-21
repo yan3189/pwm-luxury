@@ -417,7 +417,7 @@ const orderData = {
   notes: notes,
   address_id: addressId,
   voucher_discount: voucherDiscount,
-  //final_total: finalTotal,
+  final_total: finalTotal,
   // ✅ KIRIM total_amount (cart saja, tanpa upsell)
   total_amount: baseSubtotal,  // ← PASTIKAN INI TERKIRIM
   // ✅ KIRIM subtotal (cart + upsell dengan harga diskon)
@@ -441,6 +441,7 @@ const orderData = {
   }),
   selected_vouchers: selectedVouchers.map(v => v.id)
 };
+console.log('📊 FINAL TOTAL SENT:', finalTotal);  // ← Tambahkan ini untuk debug
       
       const order = await createOrder(orderData, cart.items);
       
@@ -483,8 +484,8 @@ const orderData = {
   }, 0);
   
   const subtotal = baseSubtotal + upsellTotal;
-  const effectiveShipping = shippingCost; // TIDAK DIUBAH
-  const total = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
+  const effectiveShipping = shippingCost;
+  const finalTotal = Math.max(0, subtotal + effectiveShipping - voucherDiscount);
 
  // ================================================================
 // FUNGSI RENDER CAROUSEL UPSEL
@@ -979,7 +980,7 @@ const renderUpsellItems = () => {
                 <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2 mt-2">
                   <span>Total</span>
                   <span className="text-yellow-500">
-                    {shippingCost > 0 || voucherDiscount > 0 ? `Rp ${total.toLocaleString()}` : '- - -'}
+                        {shippingCost > 0 || voucherDiscount > 0 ? `Rp ${finalTotal.toLocaleString()}` : '- - -'}
                   </span>
                 </div>
               </div>

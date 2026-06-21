@@ -7,7 +7,7 @@ import Navbar from '../components/Navbar';
 import TrackingMap from '../components/TrackingMap';
 import { 
   ArrowLeft, MapPin, Calendar, Package, User, Truck, 
-  CheckCircle, MessageCircle, Eye, Download, XCircle, AlertCircle
+  CheckCircle, MessageCircle, Eye, Download, XCircle, AlertCircle, Gift
 } from 'lucide-react';
 import { calculateETA } from '../services/etaService';
 
@@ -85,12 +85,42 @@ export default function AdminOrderDetail() {
       if (memberData) setMember(memberData);
     }
     
-    // Step 4: Ambil items
+    // Step 4: Ambil items dari order_items
     const { data: itemsData } = await supabase
       .from('order_items')
       .select('*')
       .eq('order_id', id);
-    setItems(itemsData || []);
+    
+    // ================================================================
+    // STEP 4B: GABUNGKAN DENGAN UPSEL ITEMS (dari orders.upsell_items)
+    // ================================================================
+    let allItems = itemsData || [];
+    
+    if (orderData.upsell_items && Array.isArray(orderData.upsell_items) && orderData.upsell_items.length > 0) {
+      console.log('✅ Upsell items found in order:', orderData.upsell_items);
+      
+      const upsellItems = orderData.upsell_items.map((upsell, index) => ({
+        id: `upsell-${index}`,
+        order_id: orderData.id,
+        product_id: upsell.product_id || null,
+        product_name: upsell.name || 'Produk Upsell',
+        quantity: upsell.quantity || 1,
+        price: upsell.price || 0,
+        total: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+        discount_percentage: upsell.discount_percentage || 0,
+        original_price: upsell.price || 0,
+        discounted_price: upsell.discounted_price || upsell.price || 0,
+        subtotal: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+        is_upsell: true,
+        from_upsell: true,
+        has_discount: upsell.has_discount || false
+      }));
+      
+      allItems = [...allItems, ...upsellItems];
+      console.log('✅ Combined items:', allItems);
+    }
+    
+    setItems(allItems);
     
     // Step 5: Ambil alamat
     if (orderData.address_id) {
@@ -308,17 +338,13 @@ export default function AdminOrderDetail() {
         if (isTrackingActive === 'timeout') setIsTrackingActive(true);
         if (heading !== undefined) setCourierHeading(heading);
         
-        // Update lokasi kurir
-        console.log('🎯 Setting courier location to:', [lat, lng]);
         setCourierLocation([lat, lng]);
         
-        // Hitung ETA
         if (destLat && destLng && lat && lng) {
           const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
           setEta(newEta);
         }
         
-        // Update map center
         if (mapRef.current && lat && lng) {
           mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
         }
@@ -348,7 +374,6 @@ export default function AdminOrderDetail() {
         console.log('📡 Realtime subscription status:', status);
       });
     
-    // Timeout detection
     statusCheckInterval = setInterval(() => {
       if (!isMounted) return;
       if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
@@ -408,17 +433,29 @@ export default function AdminOrderDetail() {
     }
   };
 
+  // ========== HITUNG SUBTOTAL ==========
+  const cartSubtotal = order?.total_amount || 0;
+  const upsellItems = order?.upsell_items || [];
+  const upsellTotal = upsellItems.reduce((sum, item) => {
+    const price = item.discounted_price || item.price || 0;
+    return sum + (price * (item.quantity || 1));
+  }, 0);
+  const subtotal = cartSubtotal + upsellTotal;
+  const shippingCost = order?.shipping_cost || 0;
+  const voucherDiscount = order?.voucher_discount || 0;
+  const finalTotal = order?.final_total || (subtotal + shippingCost - voucherDiscount);
+
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
   if (error) return <div className="bg-black min-h-screen text-white p-8 text-center">{error}</div>;
   if (!order) return null;
 
   const customerName = member?.full_name || order.guest_name || 'Guest';
   const customerPhone = member?.phone || order.guest_phone || '-';
-  const subtotal = order.total_amount - (order.shipping_cost || 0);
   const showTrackingTab = delivery && delivery?.status !== 'completed' && delivery?.status !== 'cancelled';
   const storeLocation = store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null;
   const destination = order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null;
   const isCancellationRequested = order.status === 'cancellation_requested';
+  const hasUpsell = order.upsell_items && order.upsell_items.length > 0;
 
   return (
     <div className="bg-black min-h-screen text-white p-6">
@@ -457,6 +494,11 @@ export default function AdminOrderDetail() {
             <div>
               <h1 className="text-2xl font-display">Pesanan #{order.order_number}</h1>
               <p className="text-gray-400">{store?.name}</p>
+              {hasUpsell && (
+                <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 mt-1">
+                  <Gift size={12} /> +{order.upsell_items.reduce((sum, item) => sum + (item.quantity || 1), 0)} item upsell
+                </span>
+              )}
             </div>
             {getStatusBadge(order.status)}
           </div>
@@ -481,12 +523,49 @@ export default function AdminOrderDetail() {
               <div>
                 <h2 className="font-semibold flex items-center gap-2 mb-2"><Package size={16} /> Produk</h2>
                 <div className="space-y-2 bg-gray-800/30 rounded-lg p-3">
-                  {items.map(item => (
-                    <div key={item.id} className="flex justify-between text-sm border-b border-white/5 pb-1">
-                      <span>{item.product_name} x{item.quantity}</span>
-                      <span>Rp {item.total?.toLocaleString()}</span>
-                    </div>
-                  ))}
+                  {items.map(item => {
+                    const isUpsell = item.is_upsell || item.from_upsell || false;
+                    const displayPrice = item.discounted_price || item.price || 0;
+                    const totalPerItem = displayPrice * (item.quantity || 1);
+                    const hasDiscount = item.discount_percentage && item.discount_percentage > 0;
+                    const originalPrice = item.original_price || item.price || 0;
+                    
+                    return (
+                      <div key={item.id} className={`flex justify-between text-sm border-b border-white/5 pb-1 ${isUpsell ? 'text-yellow-500' : ''}`}>
+                        <span>
+                          {isUpsell && <span className="text-yellow-500">+ </span>}
+                          {item.product_name} x{item.quantity}
+                        </span>
+                        <div className="text-right">
+                          <span>Rp {totalPerItem.toLocaleString()}</span>
+                          {hasDiscount && (
+                            <div className="text-xs text-green-400">
+                              <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Total Diskon Produk */}
+                  {(() => {
+                    let totalProductDiscount = 0;
+                    items.forEach(item => {
+                      const originalPrice = item.original_price || item.price || 0;
+                      const displayPrice = item.discounted_price || item.price || 0;
+                      if (displayPrice < originalPrice && displayPrice > 0) {
+                        totalProductDiscount += (originalPrice - displayPrice) * (item.quantity || 1);
+                      }
+                    });
+                    return totalProductDiscount > 0 ? (
+                      <div className="flex justify-between text-green-400 text-sm border-t border-white/10 pt-1">
+                        <span>Total Diskon Produk</span>
+                        <span>-Rp {totalProductDiscount.toLocaleString()}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  
                   <div className="flex justify-between text-sm pt-1">
                     <span>Subtotal</span>
                     <span>Rp {subtotal.toLocaleString()}</span>
@@ -495,9 +574,15 @@ export default function AdminOrderDetail() {
                     <span>Ongkos Kirim</span>
                     <span>Rp {(order.shipping_cost || 0).toLocaleString()}</span>
                   </div>
+                  {(order.voucher_discount || 0) > 0 && (
+                    <div className="flex justify-between text-green-400 text-sm">
+                      <span>Diskon Voucher</span>
+                      <span>-Rp {(order.voucher_discount || 0).toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-lg pt-2 border-t border-white/10">
                     <span>Total</span>
-                    <span>Rp {order.total_amount.toLocaleString()}</span>
+                    <span className="text-yellow-500">Rp {finalTotal.toLocaleString()}</span>
                   </div>
                 </div>
               </div>

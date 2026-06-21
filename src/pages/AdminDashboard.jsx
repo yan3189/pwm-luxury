@@ -13,20 +13,19 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck 
+  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
-import { UserPlus } from 'lucide-react';
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
-  const [store, setStore] = useState(null)               // data store yang sedang dilihat
-  const [storesList, setStoresList] = useState([])       // daftar semua store (untuk super admin)
+  const [store, setStore] = useState(null)
+  const [storesList, setStoresList] = useState([])
   const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState('')           // 'super_admin' atau 'store_admin'
-  const [storeId, setStoreId] = useState(null)           // ID store milik admin (jika store admin)
-  const [selectedStoreId, setSelectedStoreId] = useState(null) // untuk super admin pilih store
+  const [userRole, setUserRole] = useState('')
+  const [storeId, setStoreId] = useState(null)
+  const [selectedStoreId, setSelectedStoreId] = useState(null)
   const [showStoreModal, setShowStoreModal] = useState(false)
 
   // -------------------- PREVIEW DATA (3 item terbaru) --------------------
@@ -45,9 +44,9 @@ export default function AdminDashboard() {
   const [showReport, setShowReport] = useState(false)
 
   // Data hasil laporan
-  const [orderList, setOrderList] = useState([])          // daftar transaksi (untuk tampilan web)
-  const [rawOrders, setRawOrders] = useState([])          // data mentah order untuk export
-  const [rawOrderItems, setRawOrderItems] = useState([])  // data mentah order_items untuk export detail item
+  const [orderList, setOrderList] = useState([])
+  const [rawOrders, setRawOrders] = useState([])
+  const [rawOrderItems, setRawOrderItems] = useState([])
   const [discountImpact, setDiscountImpact] = useState(null)
   const [featuredVsNonFeatured, setFeaturedVsNonFeatured] = useState([])
 
@@ -133,10 +132,10 @@ export default function AdminDashboard() {
     setReportLoading(true)
 
     try {
-      // Ambil semua order dengan status delivered
+      // ✅ Ambil semua order dengan status delivered
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, order_number, total_amount, shipping_cost, created_at, status')
+        .select('id, order_number, total_amount, final_total, shipping_cost, voucher_discount, created_at, status, upsell_items')
         .eq('store_id', targetStoreId)
         .eq('status', 'delivered')
         .order('created_at', { ascending: false })
@@ -148,15 +147,17 @@ export default function AdminDashboard() {
         setReportLoading(false); return
       }
 
-      // Simpan untuk export
       setRawOrders(orders)
 
-      // Format untuk ditampilkan di web: daftar transaksi (nomor, tanggal, total, status)
+      // ✅ Format untuk ditampilkan di web: gunakan final_total
       const formatted = orders.map(o => ({
         order_number: o.order_number,
         tanggal: new Date(o.created_at).toLocaleDateString('id-ID'),
-        total: o.total_amount,
-        status: o.status
+        total: o.final_total || o.total_amount,
+        shipping_cost: o.shipping_cost || 0,
+        voucher_discount: o.voucher_discount || 0,
+        status: o.status,
+        upsell_items: o.upsell_items || []
       }))
       setOrderList(formatted)
 
@@ -165,8 +166,25 @@ export default function AdminDashboard() {
       const { data: items } = await supabase.from('order_items').select('*').in('order_id', orderIds)
       setRawOrderItems(items || [])
 
-      // Hitung dampak diskon
+      // ✅ Hitung dampak diskon dari semua item (cart + upsell)
       let seharusnya = 0, realisasi = 0, diskonItems = 0
+      const allItems = [...(items || [])]
+      
+      // Tambahkan upsell items ke perhitungan
+      orders.forEach(order => {
+        if (order.upsell_items && Array.isArray(order.upsell_items)) {
+          order.upsell_items.forEach(upsell => {
+            const price = upsell.discounted_price || upsell.price || 0
+            const qty = upsell.quantity || 1
+            const origPrice = upsell.price || 0
+            seharusnya += origPrice * qty
+            realisasi += price * qty
+            if (origPrice > price) diskonItems++
+          })
+        }
+      })
+      
+      // Hitung dari order_items
       if (items) {
         items.forEach(it => {
           const orig = it.original_price || it.price || 0
@@ -176,17 +194,21 @@ export default function AdminDashboard() {
           if (orig > disc) diskonItems++
         })
       }
+      
       setDiscountImpact({ seharusnya, realisasi, total_diskon: seharusnya - realisasi, diskonItems })
 
-      // Hitung favorit vs non-favorit
+      // ✅ Hitung favorit vs non-favorit (dari semua item)
       const productIds = [...new Set((items || []).map(i => i.product_id).filter(id => id))]
       let productsMap = new Map()
       if (productIds.length) {
         const { data: prods } = await supabase.from('products').select('id, is_featured').in('id', productIds)
         if (prods) prods.forEach(p => productsMap.set(p.id, p))
       }
+      
       let featuredQty = 0, featuredSales = 0, nonFeaturedQty = 0, nonFeaturedSales = 0
-      const totalRevenue = orders.reduce((s, o) => s + o.total_amount, 0)
+      const totalRevenue = orders.reduce((s, o) => s + (o.final_total || o.total_amount), 0)
+      
+      // Hitung dari order_items
       if (items) {
         items.forEach(it => {
           const isFeat = productsMap.get(it.product_id)?.is_featured || false
@@ -200,6 +222,26 @@ export default function AdminDashboard() {
           }
         })
       }
+      
+      // Hitung dari upsell_items
+      orders.forEach(order => {
+        if (order.upsell_items && Array.isArray(order.upsell_items)) {
+          order.upsell_items.forEach(upsell => {
+            const isFeat = productsMap.get(upsell.product_id)?.is_featured || false
+            const price = upsell.discounted_price || upsell.price || 0
+            const qty = upsell.quantity || 1
+            const itemTotal = price * qty
+            if (isFeat) {
+              featuredQty += qty
+              featuredSales += itemTotal
+            } else {
+              nonFeaturedQty += qty
+              nonFeaturedSales += itemTotal
+            }
+          })
+        }
+      })
+      
       setFeaturedVsNonFeatured([
         { type: 'Favorit', total_qty: featuredQty, total_sales: featuredSales, percentage: totalRevenue ? (featuredSales / totalRevenue * 100).toFixed(1) : 0 },
         { type: 'Non Favorit', total_qty: nonFeaturedQty, total_sales: nonFeaturedSales, percentage: totalRevenue ? (nonFeaturedSales / totalRevenue * 100).toFixed(1) : 0 }
@@ -209,53 +251,102 @@ export default function AdminDashboard() {
     setReportLoading(false)
   }
 
+  // // ============================================================
+// 3. EXPORT KE EXCEL (4 SHEET) - DIPERBAIKI (UPSEL DISKON)
+// ============================================================
+const exportToExcel = () => {
   // ============================================================
-  // 3. EXPORT KE EXCEL (4 SHEET)
+  // Sheet 1: Daftar Transaksi
   // ============================================================
-  const exportToExcel = () => {
-    // Sheet 1: Daftar Transaksi (nomor order, tanggal, total bayar, ongkir, status)
-    const transactionData = rawOrders.map(o => ({
-      'Nomor Order': o.order_number,
-      'Tanggal': new Date(o.created_at).toLocaleDateString('id-ID'),
-      'Total Bayar': o.total_amount,
-      'Ongkos Kirim': o.shipping_cost || 0,
-      'Status': o.status
-    }))
+  const transactionData = rawOrders.map(o => ({
+    'Nomor Order': o.order_number,
+    'Tanggal': new Date(o.created_at).toLocaleDateString('id-ID'),
+    'Total Bayar': o.final_total || o.total_amount,
+    'Ongkos Kirim': o.shipping_cost || 0,
+    'Diskon Voucher': o.voucher_discount || 0,
+    'Status': o.status
+  }))
 
-    // Sheet 2: Detail Item (setiap produk per order)
-    const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
-    const itemData = rawOrderItems.map(it => ({
-      'Nomor Order': orderMap.get(it.order_id) || '-',
-      'Nama Produk': it.product_name,
-      'Quantity': it.quantity,
-      'Harga Satuan': it.discounted_price || it.price || 0,
-      'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
-    }))
+  // ============================================================
+  // Sheet 2: Detail Item (CART + UPSEL dengan diskon yang benar)
+  // ============================================================
+  const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
+  
+  // --- Data dari order_items (CART) ---
+  const cartItemData = rawOrderItems.map(it => ({
+    'Nomor Order': orderMap.get(it.order_id) || '-',
+    'Nama Produk': it.product_name,
+    'Quantity': it.quantity,
+    'Harga Satuan': it.original_price || it.price || 0,
+    'Diskon %': it.discount_percentage || 0,
+    'Harga Setelah Diskon': it.discounted_price || it.price || 0,
+    'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
+  }))
 
-    // Sheet 3: Favorit vs Non-Favorit
-    const featuredData = featuredVsNonFeatured.map(f => ({
-      'Tipe': f.type,
-      'Jumlah Terjual': f.total_qty,
-      'Omzet': f.total_sales,
-      'Kontribusi (%)': f.percentage
-    }))
+  // --- Data dari upsell_items (UPSEL) ---
+let upsellItemData = []
+rawOrders.forEach(order => {
+  if (order.upsell_items && Array.isArray(order.upsell_items)) {
+    order.upsell_items.forEach(upsell => {
+      // ✅ Ambil data diskon dari JSONB (dengan fallback)
+      const hasDiscount = upsell.has_discount || false
+      const discountPercent = upsell.discount_percentage || 0
+      const originalPrice = upsell.price || 0
+      
+      // ✅ Gunakan discounted_price jika ada, jika tidak hitung dari diskon
+      let discountedPrice = upsell.discounted_price
+      if (!discountedPrice && hasDiscount && discountPercent > 0) {
+        discountedPrice = Math.round(originalPrice * (1 - discountPercent / 100))
+      } else if (!discountedPrice) {
+        discountedPrice = originalPrice
+      }
+      
+      const qty = upsell.quantity || 1
+        
+        upsellItemData.push({
+          'Nomor Order': order.order_number,
+          'Nama Produk': upsell.name || 'Produk Upsell',
+          'Quantity': qty,
+          'Harga Satuan': originalPrice,
+          'Diskon %': discountPercent,
+          'Harga Setelah Diskon': discountedPrice,
+          'Subtotal': discountedPrice * qty
+        })
+      })
+    }
+  })
 
-    // Sheet 4: Dampak Diskon
-    const discountData = discountImpact ? [{
-      'Total Sebelum Diskon': discountImpact.seharusnya,
-      'Total Setelah Diskon': discountImpact.realisasi,
-      'Total Diskon': discountImpact.total_diskon,
-      'Item Mendapat Diskon': discountImpact.diskonItems
-    }] : []
+  // Gabungkan semua item (cart + upsell)
+  const allItemData = [...cartItemData, ...upsellItemData]
 
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactionData), 'Daftar Transaksi')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemData), 'Detail Item')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(featuredData), 'Favorit vs Non')
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(discountData), 'Dampak Diskon')
+  // ============================================================
+  // Sheet 3: Favorit vs Non-Favorit
+  // ============================================================
+  const featuredData = featuredVsNonFeatured.map(f => ({
+    'Tipe': f.type,
+    'Jumlah Terjual': f.total_qty,
+    'Omzet': f.total_sales,
+    'Kontribusi (%)': f.percentage
+  }))
 
-    XLSX.writeFile(wb, `laporan_penjualan_${new Date().toISOString().slice(0,10)}.xlsx`)
-  }
+  // ============================================================
+  // Sheet 4: Dampak Diskon
+  // ============================================================
+  const discountData = discountImpact ? [{
+    'Total Sebelum Diskon': discountImpact.seharusnya,
+    'Total Setelah Diskon': discountImpact.realisasi,
+    'Total Diskon': discountImpact.total_diskon,
+    'Item Mendapat Diskon': discountImpact.diskonItems
+  }] : []
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactionData), 'Daftar Transaksi')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allItemData), 'Detail Item')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(featuredData), 'Favorit vs Non')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(discountData), 'Dampak Diskon')
+
+  XLSX.writeFile(wb, `laporan_penjualan_${new Date().toISOString().slice(0,10)}.xlsx`)
+}
 
   // ============================================================
   // 4. FUNGSI UTILITY LAIN (LOGOUT, UPDATE STORE, DLL)
@@ -321,7 +412,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* LAPORAN PENJUALAN (sama untuk super admin) */}
+          {/* LAPORAN PENJUALAN */}
           <div className="mt-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-display">Laporan Penjualan - {store?.name || 'Pilih Store'}</h2>
@@ -348,53 +439,53 @@ export default function AdminDashboard() {
                 {/* DAFTAR TRANSAKSI (tampilan web) */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-gray-800/50 rounded-lg p-4">
-  <h3 className="font-semibold mb-3">📋 Daftar Transaksi Selesai</h3>
-  {orderList.length === 0 ? (
-    <p className="text-gray-500 text-sm">Belum ada transaksi selesai</p>
-  ) : (
-    <div className="border border-white/10 rounded-lg h-[360px] overflow-y-auto">
-      <table className="w-full text-sm">
-        <thead className="text-gray-400 border-b border-white/10 sticky top-0 bg-gray-800 z-10">
-          <tr>
-            <th className="text-left py-2 px-2">Nomor Order</th>
-            <th className="text-left py-2 px-2">Tanggal</th>
-            <th className="text-right py-2 px-2">Total</th>
-            <th className="text-left py-2 px-2">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orderList.map(order => (
-            <tr key={order.order_number} className="border-b border-white/5 hover:bg-white/5">
-              <td className="py-2 px-2 font-mono text-xs">{order.order_number}</td>
-              <td className="py-2 px-2">{order.tanggal}</td>
-              <td className="py-2 px-2 text-right text-yellow-500">Rp {order.total.toLocaleString()}</td>
-              <td className="py-2 px-2 capitalize">{order.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )}
-</div>
+                    <h3 className="font-semibold mb-3">📋 Daftar Transaksi Selesai</h3>
+                    {orderList.length === 0 ? (
+                      <p className="text-gray-500 text-sm">Belum ada transaksi selesai</p>
+                    ) : (
+                      <div className="border border-white/10 rounded-lg h-[360px] overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-gray-400 border-b border-white/10 sticky top-0 bg-gray-800 z-10">
+                            <tr>
+                              <th className="text-left py-2 px-2">Nomor Order</th>
+                              <th className="text-left py-2 px-2">Tanggal</th>
+                              <th className="text-right py-2 px-2">Total</th>
+                              <th className="text-left py-2 px-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orderList.map(order => (
+                              <tr key={order.order_number} className="border-b border-white/5 hover:bg-white/5">
+                                <td className="py-2 px-2 font-mono text-xs">{order.order_number}</td>
+                                <td className="py-2 px-2">{order.tanggal}</td>
+                                <td className="py-2 px-2 text-right text-yellow-500">Rp {order.total.toLocaleString()}</td>
+                                <td className="py-2 px-2 capitalize">{order.status}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
 
-                  {/* RINGKASAN & GRAFIK SEDERHANA */}
+                  {/* RINGKASAN */}
                   <div className="bg-gray-800/50 rounded-lg p-4">
-  <h3 className="font-semibold mb-3">📈 Ringkasan</h3>
-  {orderList.length > 0 ? (
-    <div className="space-y-2 text-sm">
-      <div className="flex justify-between"><span>Total Transaksi:</span><span className="font-bold">{orderList.length} transaksi</span></div>
-      <div className="flex justify-between"><span>Total Omzet:</span><span className="text-yellow-500 font-bold">Rp {orderList.reduce((s, o) => s + o.total, 0).toLocaleString()}</span></div>
-      <div className="flex justify-between"><span>Rata-rata per Transaksi:</span><span>Rp {Math.round(orderList.reduce((s, o) => s + o.total, 0) / orderList.length).toLocaleString()}</span></div>
-      {discountImpact && discountImpact.total_diskon > 0 && (
-        <div className="flex justify-between"><span>Total Diskon Diberikan:</span><span className="text-red-400">Rp {discountImpact.total_diskon.toLocaleString()}</span></div>
-      )}
-      {featuredVsNonFeatured.length > 0 && (
-        <div className="flex justify-between"><span>Kontribusi Produk Favorit:</span><span className="text-yellow-500">{featuredVsNonFeatured.find(f => f.type === 'Favorit')?.percentage || 0}%</span></div>
-      )}
-      <div className="flex justify-between"><span>Total Ongkos Kirim:</span><span>Rp {rawOrders.reduce((sum, o) => sum + (o.shipping_cost || 0), 0).toLocaleString()}</span></div>
-    </div>
-  ) : <p className="text-gray-500 text-sm">Belum ada data</p>}
-</div>
+                    <h3 className="font-semibold mb-3">📈 Ringkasan</h3>
+                    {orderList.length > 0 ? (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span>Total Transaksi:</span><span className="font-bold">{orderList.length} transaksi</span></div>
+                        <div className="flex justify-between"><span>Total Omzet:</span><span className="text-yellow-500 font-bold">Rp {orderList.reduce((s, o) => s + o.total, 0).toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span>Rata-rata per Transaksi:</span><span>Rp {Math.round(orderList.reduce((s, o) => s + o.total, 0) / orderList.length).toLocaleString()}</span></div>
+                        {discountImpact && discountImpact.total_diskon > 0 && (
+                          <div className="flex justify-between"><span>Total Diskon Diberikan:</span><span className="text-red-400">Rp {discountImpact.total_diskon.toLocaleString()}</span></div>
+                        )}
+                        {featuredVsNonFeatured.length > 0 && (
+                          <div className="flex justify-between"><span>Kontribusi Produk Favorit:</span><span className="text-yellow-500">{featuredVsNonFeatured.find(f => f.type === 'Favorit')?.percentage || 0}%</span></div>
+                        )}
+                        <div className="flex justify-between"><span>Total Ongkos Kirim:</span><span>Rp {rawOrders.reduce((sum, o) => sum + (o.shipping_cost || 0), 0).toLocaleString()}</span></div>
+                      </div>
+                    ) : <p className="text-gray-500 text-sm">Belum ada data</p>}
+                  </div>
 
                   {/* DAMPAK DISKON */}
                   <div className="bg-gray-800/50 rounded-lg p-4">
@@ -454,43 +545,27 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tombol aksi */}
-<div className="mb-6 flex flex-wrap gap-3 justify-end">
-  {/* Tombol Buat Akun - untuk Super Admin & Store Admin */}
-  {(userRole === 'super_admin' || userRole === 'store_admin') && (
-    <button 
-      onClick={() => navigate('/admin/create-user')}
-      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full text-sm transition"
-    >
-      <UserPlus size={16} /> Buat Akun
-    </button>
-  )}
-  
-  {/* Tombol Kelola Member - untuk Super Admin & Store Admin */}
-  {(userRole === 'super_admin' || userRole === 'store_admin') && (
-    <button 
-      onClick={() => navigate('/admin/members')}
-      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-full text-sm transition"
-    >
-      <Users size={16} /> Kelola Member
-    </button>
-  )}
-  
-  <button onClick={() => setShowStoreModal(true)} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Edit size={16} /> Edit Profil Store</button>
-  <button onClick={() => navigate('/admin/shipping')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Truck size={16} /> Pengaturan Ongkir</button>
-  <button onClick={() => navigate('/admin/store-categories')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Package size={16} /> Atur Kategori Store</button>
-  <button 
-  onClick={() => navigate('/admin/stock')}
-  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-full text-sm transition"
->
-  <Package size={16} /> Manajemen Stok
-</button>
-<button 
-  onClick={() => navigate('/admin/promotions')}
-  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition"
->
-  <Gift size={16} /> Promosi
-</button>
-</div>
+        <div className="mb-6 flex flex-wrap gap-3 justify-end">
+          {(userRole === 'super_admin' || userRole === 'store_admin') && (
+            <button onClick={() => navigate('/admin/create-user')} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full text-sm transition">
+              <UserPlus size={16} /> Buat Akun
+            </button>
+          )}
+          {(userRole === 'super_admin' || userRole === 'store_admin') && (
+            <button onClick={() => navigate('/admin/members')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-full text-sm transition">
+              <Users size={16} /> Kelola Member
+            </button>
+          )}
+          <button onClick={() => setShowStoreModal(true)} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Edit size={16} /> Edit Profil Store</button>
+          <button onClick={() => navigate('/admin/shipping')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Truck size={16} /> Pengaturan Ongkir</button>
+          <button onClick={() => navigate('/admin/store-categories')} className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full text-sm"><Package size={16} /> Atur Kategori Store</button>
+          <button onClick={() => navigate('/admin/stock')} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-full text-sm transition">
+            <Package size={16} /> Manajemen Stok
+          </button>
+          <button onClick={() => navigate('/admin/promotions')} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition">
+            <Gift size={16} /> Promosi
+          </button>
+        </div>
 
         {/* Preview 6 card (produk, artikel, event, member, pesan, pesanan) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
@@ -499,10 +574,28 @@ export default function AdminDashboard() {
           <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10"><div className="flex justify-between mb-2"><Calendar size={18} className="text-yellow-500" /><button onClick={() => navigate('/admin/events')} className="text-yellow-500 text-xs">Kelola</button></div>{recentEvents.map(e => <div key={e.id} className="text-xs py-1 truncate">{e.title}</div>)}{recentEvents.length === 0 && <p className="text-gray-500 text-center text-xs">Belum ada event</p>}</div>
           <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10"><div className="flex justify-between mb-2"><Users size={18} className="text-yellow-500" /><button onClick={() => navigate('/admin/members')} className="text-yellow-500 text-xs">Kelola</button></div>{recentMembers.map(m => <div key={m.id} className="text-xs py-1 truncate">{m.full_name || m.email}<span className="text-yellow-500 ml-1">{m.points || 0} poin</span></div>)}{recentMembers.length === 0 && <p className="text-gray-500 text-center text-xs">Belum ada member</p>}</div>
           <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10"><div className="flex justify-between mb-2"><MessageCircle size={18} className="text-yellow-500" /><button onClick={() => navigate('/admin/contacts')} className="text-yellow-500 text-xs">Kelola</button></div>{recentMessages.map(m => <div key={m.id} className="text-xs py-1 truncate font-medium">{m.name}<span className="text-gray-400 ml-1">{m.message?.substring(0, 20)}</span></div>)}{recentMessages.length === 0 && <p className="text-gray-500 text-center text-xs">Belum ada pesan</p>}</div>
-          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10"><div className="flex justify-between mb-2"><ShoppingBag size={18} className="text-yellow-500" /><button onClick={() => navigate('/admin/orders')} className="text-yellow-500 text-xs">Kelola</button></div>{recentOrders.map(o => <div key={o.id} className="text-xs py-1"><span>#{o.order_number}</span><span className="text-yellow-500 ml-1">Rp {o.total_amount.toLocaleString()}</span><span className="text-gray-400 ml-1 capitalize">{o.status}</span></div>)}{recentOrders.length === 0 && <p className="text-gray-500 text-center text-xs">Belum ada pesanan</p>}</div>
+          {/* Card Order Preview */}
+<div className="bg-gray-900/50 rounded-xl p-4 border border-white/10">
+  <div className="flex justify-between mb-2">
+    <ShoppingBag size={18} className="text-yellow-500" />
+    <button onClick={() => navigate('/admin/orders')} className="text-yellow-500 text-xs">Kelola</button>
+  </div>
+  {recentOrders.map(o => {
+    // ✅ Gunakan final_total jika ada
+    const totalDisplay = o.final_total || o.total_amount;
+    return (
+      <div key={o.id} className="text-xs py-1">
+        <span>#{o.order_number}</span>
+        <span className="text-yellow-500 ml-1">Rp {totalDisplay.toLocaleString()}</span>
+        <span className="text-gray-400 ml-1 capitalize">{o.status}</span>
+      </div>
+    );
+  })}
+  {recentOrders.length === 0 && <p className="text-gray-500 text-center text-xs">Belum ada pesanan</p>}
+</div>
         </div>
 
-        {/* LAPORAN PENJUALAN (sama seperti di super admin, tanpa dropdown store) */}
+        {/* LAPORAN PENJUALAN */}
         <div className="mt-10">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-display">Laporan Penjualan</h2>
@@ -527,55 +620,55 @@ export default function AdminDashboard() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* DAFTAR TRANSAKSI (tampilan web) */}
+                {/* DAFTAR TRANSAKSI */}
                 <div className="bg-gray-800/50 rounded-lg p-4">
-  <h3 className="font-semibold mb-3">📋 Daftar Transaksi Selesai</h3>
-  {orderList.length === 0 ? (
-    <p className="text-gray-500 text-sm">Belum ada transaksi selesai</p>
-  ) : (
-    <div className="border border-white/10 rounded-lg h-[360px] overflow-y-auto">
-      <table className="w-full text-sm">
-        <thead className="text-gray-400 border-b border-white/10 sticky top-0 bg-gray-800 z-10">
-          <tr>
-            <th className="text-left py-2 px-2">Nomor Order</th>
-            <th className="text-left py-2 px-2">Tanggal</th>
-            <th className="text-right py-2 px-2">Total</th>
-            <th className="text-left py-2 px-2">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orderList.map(order => (
-            <tr key={order.order_number} className="border-b border-white/5 hover:bg-white/5">
-              <td className="py-2 px-2 font-mono text-xs">{order.order_number}</td>
-              <td className="py-2 px-2">{order.tanggal}</td>
-              <td className="py-2 px-2 text-right text-yellow-500">Rp {order.total.toLocaleString()}</td>
-              <td className="py-2 px-2 capitalize">{order.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )}
-</div>
+                  <h3 className="font-semibold mb-3">📋 Daftar Transaksi Selesai</h3>
+                  {orderList.length === 0 ? (
+                    <p className="text-gray-500 text-sm">Belum ada transaksi selesai</p>
+                  ) : (
+                    <div className="border border-white/10 rounded-lg h-[360px] overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-gray-400 border-b border-white/10 sticky top-0 bg-gray-800 z-10">
+                          <tr>
+                            <th className="text-left py-2 px-2">Nomor Order</th>
+                            <th className="text-left py-2 px-2">Tanggal</th>
+                            <th className="text-right py-2 px-2">Total</th>
+                            <th className="text-left py-2 px-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orderList.map(order => (
+                            <tr key={order.order_number} className="border-b border-white/5 hover:bg-white/5">
+                              <td className="py-2 px-2 font-mono text-xs">{order.order_number}</td>
+                              <td className="py-2 px-2">{order.tanggal}</td>
+                              <td className="py-2 px-2 text-right text-yellow-500">Rp {order.total.toLocaleString()}</td>
+                              <td className="py-2 px-2 capitalize">{order.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
 
                 {/* RINGKASAN */}
                 <div className="bg-gray-800/50 rounded-lg p-4">
-  <h3 className="font-semibold mb-3">📈 Ringkasan</h3>
-  {orderList.length > 0 ? (
-    <div className="space-y-2 text-sm">
-      <div className="flex justify-between"><span>Total Transaksi:</span><span className="font-bold">{orderList.length} transaksi</span></div>
-      <div className="flex justify-between"><span>Total Omzet:</span><span className="text-yellow-500 font-bold">Rp {orderList.reduce((s, o) => s + o.total, 0).toLocaleString()}</span></div>
-      <div className="flex justify-between"><span>Rata-rata per Transaksi:</span><span>Rp {Math.round(orderList.reduce((s, o) => s + o.total, 0) / orderList.length).toLocaleString()}</span></div>
-      {discountImpact && discountImpact.total_diskon > 0 && (
-        <div className="flex justify-between"><span>Total Diskon Diberikan:</span><span className="text-red-400">Rp {discountImpact.total_diskon.toLocaleString()}</span></div>
-      )}
-      {featuredVsNonFeatured.length > 0 && (
-        <div className="flex justify-between"><span>Kontribusi Produk Favorit:</span><span className="text-yellow-500">{featuredVsNonFeatured.find(f => f.type === 'Favorit')?.percentage || 0}%</span></div>
-      )}
-      <div className="flex justify-between"><span>Total Ongkos Kirim:</span><span>Rp {rawOrders.reduce((sum, o) => sum + (o.shipping_cost || 0), 0).toLocaleString()}</span></div>
-    </div>
-  ) : <p className="text-gray-500 text-sm">Belum ada data</p>}
-</div>
+                  <h3 className="font-semibold mb-3">📈 Ringkasan</h3>
+                  {orderList.length > 0 ? (
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between"><span>Total Transaksi:</span><span className="font-bold">{orderList.length} transaksi</span></div>
+                      <div className="flex justify-between"><span>Total Omzet:</span><span className="text-yellow-500 font-bold">Rp {orderList.reduce((s, o) => s + o.total, 0).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Rata-rata per Transaksi:</span><span>Rp {Math.round(orderList.reduce((s, o) => s + o.total, 0) / orderList.length).toLocaleString()}</span></div>
+                      {discountImpact && discountImpact.total_diskon > 0 && (
+                        <div className="flex justify-between"><span>Total Diskon Diberikan:</span><span className="text-red-400">Rp {discountImpact.total_diskon.toLocaleString()}</span></div>
+                      )}
+                      {featuredVsNonFeatured.length > 0 && (
+                        <div className="flex justify-between"><span>Kontribusi Produk Favorit:</span><span className="text-yellow-500">{featuredVsNonFeatured.find(f => f.type === 'Favorit')?.percentage || 0}%</span></div>
+                      )}
+                      <div className="flex justify-between"><span>Total Ongkos Kirim:</span><span>Rp {rawOrders.reduce((sum, o) => sum + (o.shipping_cost || 0), 0).toLocaleString()}</span></div>
+                    </div>
+                  ) : <p className="text-gray-500 text-sm">Belum ada data</p>}
+                </div>
 
                 {/* DAMPAK DISKON */}
                 <div className="bg-gray-800/50 rounded-lg p-4">
@@ -617,7 +710,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* MODAL EDIT STORE (tidak berubah) */}
+      {/* MODAL EDIT STORE */}
       {showStoreModal && store && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl border border-white/10 max-h-[90vh] overflow-y-auto">

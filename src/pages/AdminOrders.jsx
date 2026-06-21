@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNavigate, Link } from 'react-router-dom';
-import { Package, Eye, CheckCircle, Truck, PackageCheck, XCircle } from 'lucide-react';
+import { Package, Eye, CheckCircle, Truck, PackageCheck, XCircle, Gift } from 'lucide-react';
 
 export default function AdminOrders() {
   const [store, setStore] = useState(null);
@@ -44,7 +44,6 @@ export default function AdminOrders() {
   const fetchOrders = async (storeId) => {
     setLoading(true);
     
-    // Query sederhana tanpa nested select
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -83,7 +82,8 @@ export default function AdminOrders() {
       processing: 'bg-purple-500/20 text-purple-400',
       shipping: 'bg-orange-500/20 text-orange-400',
       delivered: 'bg-green-500/20 text-green-400',
-      cancelled: 'bg-red-500/20 text-red-400'
+      cancelled: 'bg-red-500/20 text-red-400',
+      cancellation_requested: 'bg-orange-500/20 text-orange-400'
     };
     const labels = {
       pending: 'Menunggu Pembayaran',
@@ -91,7 +91,8 @@ export default function AdminOrders() {
       processing: 'Diproses',
       shipping: 'Dikirim',
       delivered: 'Selesai',
-      cancelled: 'Dibatalkan'
+      cancelled: 'Dibatalkan',
+      cancellation_requested: 'Pengajuan Pembatalan'
     };
     return <span className={`text-xs px-2 py-1 rounded-full ${colors[status] || colors.pending}`}>{labels[status] || status}</span>;
   };
@@ -125,55 +126,78 @@ export default function AdminOrders() {
                   <th className="p-3">Pemesan</th>
                   <th className="p-3">Total</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Upsell</th>
                   <th className="p-3">Tanggal</th>
                   <th className="p-3">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {orders.map(order => (
-                  <tr key={order.id} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="p-3 font-mono text-sm">#{order.order_number}</td>
-                    <td className="p-3">
-                      {order.guest_name || order.member_id || 'Guest'}
-                      {order.guest_phone && <p className="text-xs text-gray-400">{order.guest_phone}</p>}
-                    </td>
-                    <td className="p-3">Rp {order.total_amount.toLocaleString()}</td>
-                    <td className="p-3">{getStatusBadge(order.status)}</td>
-                    <td className="p-3 text-sm">{new Date(order.created_at).toLocaleDateString('id-ID')}</td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap gap-2">
-                        {order.status === 'pending' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'paid')} disabled={updating} className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-xs">
-                            <CheckCircle size={12} /> Bayar
-                          </button>
+                {orders.map(order => {
+                  // ✅ Cek apakah ada upsell
+                  const hasUpsell = order.upsell_items && order.upsell_items.length > 0;
+                  const upsellCount = hasUpsell ? order.upsell_items.reduce((sum, item) => sum + (item.quantity || 1), 0) : 0;
+                  // ✅ Gunakan final_total jika ada
+                  const totalDisplay = order.final_total || order.total_amount;
+                  
+                  return (
+                    <tr key={order.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="p-3 font-mono text-sm">#{order.order_number}</td>
+                      <td className="p-3">
+                        {order.guest_name || order.member_id || 'Guest'}
+                        {order.guest_phone && <p className="text-xs text-gray-400">{order.guest_phone}</p>}
+                      </td>
+                      <td className="p-3 text-yellow-500">
+                        Rp {totalDisplay.toLocaleString()}
+                        {order.voucher_discount > 0 && (
+                          <span className="text-xs text-green-400 block">Diskon: -Rp {order.voucher_discount.toLocaleString()}</span>
                         )}
-                        {order.status === 'paid' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'processing')} className="flex items-center gap-1 bg-purple-500/20 text-purple-400 px-2 py-1 rounded text-xs">
-                            <Package size={12} /> Proses
-                          </button>
+                      </td>
+                      <td className="p-3">{getStatusBadge(order.status)}</td>
+                      <td className="p-3">
+                        {hasUpsell ? (
+                          <span className="text-xs text-yellow-500 bg-yellow-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Gift size={12} /> +{upsellCount} item
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">-</span>
                         )}
-                        {order.status === 'processing' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'shipping')} className="flex items-center gap-1 bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-xs">
-                            <Truck size={12} /> Kirim
-                          </button>
-                        )}
-                        {order.status === 'shipping' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'delivered')} className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">
-                            <PackageCheck size={12} /> Selesai
-                          </button>
-                        )}
-                        {!['delivered', 'cancelled'].includes(order.status) && (
-                          <button onClick={() => updateOrderStatus(order.id, 'cancelled')} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-2 py-1 rounded text-xs">
-                            <XCircle size={12} /> Batal
-                          </button>
-                        )}
-                        <Link to={`/admin/orders/${order.id}`} className="text-yellow-500 text-xs flex items-center gap-1">
-                          <Eye size={12} /> Detail
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="p-3 text-sm">{new Date(order.created_at).toLocaleDateString('id-ID')}</td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {order.status === 'pending' && (
+                            <button onClick={() => updateOrderStatus(order.id, 'paid')} disabled={updating} className="flex items-center gap-1 bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-xs">
+                              <CheckCircle size={12} /> Bayar
+                            </button>
+                          )}
+                          {order.status === 'paid' && (
+                            <button onClick={() => updateOrderStatus(order.id, 'processing')} className="flex items-center gap-1 bg-purple-500/20 text-purple-400 px-2 py-1 rounded text-xs">
+                              <Package size={12} /> Proses
+                            </button>
+                          )}
+                          {order.status === 'processing' && (
+                            <button onClick={() => updateOrderStatus(order.id, 'shipping')} className="flex items-center gap-1 bg-orange-500/20 text-orange-400 px-2 py-1 rounded text-xs">
+                              <Truck size={12} /> Kirim
+                            </button>
+                          )}
+                          {order.status === 'shipping' && (
+                            <button onClick={() => updateOrderStatus(order.id, 'delivered')} className="flex items-center gap-1 bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs">
+                              <PackageCheck size={12} /> Selesai
+                            </button>
+                          )}
+                          {!['delivered', 'cancelled'].includes(order.status) && (
+                            <button onClick={() => updateOrderStatus(order.id, 'cancelled')} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-2 py-1 rounded text-xs">
+                              <XCircle size={12} /> Batal
+                            </button>
+                          )}
+                          <Link to={`/admin/orders/${order.id}`} className="text-yellow-500 text-xs flex items-center gap-1">
+                            <Eye size={12} /> Detail
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
