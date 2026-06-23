@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     // 🔥 Baca dari process.env (sudah di-load oleh dotenv)
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     const clientKey = process.env.VITE_MIDTRANS_CLIENT_KEY;
-    const baseUrl = process.env.VITE_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.VITE_APP_URL || 'https://pwm-luxury.vercel.app';
 
     console.log('🔍 === MIDTRANS ENV CHECK ===');
     console.log('🔑 MIDTRANS_SERVER_KEY exists?', !!serverKey);

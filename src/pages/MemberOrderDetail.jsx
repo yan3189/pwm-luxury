@@ -374,11 +374,11 @@ export default function MemberOrderDetail() {
 // ========== HANDLE RETRY PAYMENT ==========
 const handleRetryPayment = async () => {
   if (!order.snap_token) {
-    alert('Token pembayaran tidak ditemukan. Hubungi admin.');
+    alert('Token pembayaran tidak ditemukan.');
     return;
   }
 
-  // 🔥 Load Snap jika belum tersedia
+  // Load Snap jika belum tersedia
   let snap = window.snap;
   if (!snap || typeof snap.pay !== 'function') {
     try {
@@ -386,7 +386,7 @@ const handleRetryPayment = async () => {
       const clientKey = import.meta.env.VITE_MIDTRANS_CLIENT_KEY;
       
       if (!clientKey) {
-        alert('Midtrans tidak dikonfigurasi. Hubungi admin.');
+        alert('Midtrans tidak dikonfigurasi.');
         return;
       }
       
@@ -406,10 +406,15 @@ const handleRetryPayment = async () => {
 
   try {
     snap.pay(order.snap_token, {
-      onSuccess: (result) => {
+      onSuccess: async (result) => {
         console.log('✅ Payment Success:', result);
         alert('Pembayaran berhasil!');
-        fetchOrder();
+        // 🔥 REFRESH DATA DARI DATABASE
+        await fetchOrder();
+        // 🔥 Jika status masih pending, cek ulang setelah 3 detik
+        setTimeout(() => {
+          fetchOrder();
+        }, 3000);
       },
       onPending: (result) => {
         console.log('⏳ Payment Pending:', result);
@@ -422,7 +427,6 @@ const handleRetryPayment = async () => {
       },
       onClose: () => {
         console.log('🔄 Payment popup closed');
-        // Refresh status
         fetchOrder();
       }
     });

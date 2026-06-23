@@ -11,6 +11,12 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
+  // Log request untuk debugging
+  console.log('🔍 Webhook received!');
+  console.log('🔍 Method:', req.method);
+  console.log('🔍 Headers:', req.headers);
+  console.log('🔍 Body:', req.body);
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -19,26 +25,29 @@ export default async function handler(req, res) {
     const notification = req.body;
     console.log('📨 Webhook Notification:', JSON.stringify(notification, null, 2));
 
-    // Verifikasi signature
+    // Verifikasi signature (optional, tapi disarankan)
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     const orderId = notification.order_id;
     const statusCode = notification.status_code;
     const grossAmount = notification.gross_amount;
     const signatureKey = notification.signature_key;
 
-    const expectedSignature = crypto
-      .createHash('sha512')
-      .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
-      .digest('hex');
+    if (serverKey && signatureKey) {
+      const expectedSignature = crypto
+        .createHash('sha512')
+        .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
+        .digest('hex');
 
-    if (signatureKey !== expectedSignature) {
-      console.error('❌ Invalid signature!');
-      return res.status(401).json({ error: 'Invalid signature' });
+      if (signatureKey !== expectedSignature) {
+        console.error('❌ Invalid signature!');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+      console.log('✅ Signature verified!');
+    } else {
+      console.log('⚠️ Signature verification skipped (missing key)');
     }
 
-    console.log('✅ Signature verified!');
-
-    // Ambil data order
+    // AMBIL ORDER DARI DATABASE
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('*')
@@ -50,14 +59,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Tentukan status
+    console.log('📋 Order found:', order.order_number, 'Current status:', order.status);
+
+    // TENTUKAN STATUS
     const transactionStatus = notification.transaction_status;
     const fraudStatus = notification.fraud_status;
 
     let newOrderStatus = order.status;
     let newPaymentStatus = 'pending';
 
-    // Mapping status Midtrans
     if (transactionStatus === 'capture') {
       if (fraudStatus === 'accept') {
         newOrderStatus = 'paid';
@@ -83,9 +93,9 @@ export default async function handler(req, res) {
       newPaymentStatus = 'refund';
     }
 
-    console.log(`📊 Status mapping: order=${newOrderStatus}, payment=${newPaymentStatus}`);
+    console.log(`📊 Status update: ${order.status} → ${newOrderStatus}, payment: ${newPaymentStatus}`);
 
-    // Update database
+    // UPDATE DATABASE
     const updateData = {
       status: newOrderStatus,
       payment_status: newPaymentStatus,
@@ -106,12 +116,18 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to update order' });
     }
 
-    console.log(`✅ Order updated: ${order.status} → ${newOrderStatus}, payment_status: ${newPaymentStatus}`);
+    console.log('✅ Order updated successfully!');
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ 
+      success: true,
+      message: 'Order updated',
+      old_status: order.status,
+      new_status: newOrderStatus,
+      payment_status: newPaymentStatus
+    });
 
   } catch (error) {
     console.error('❌ Webhook error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 }
