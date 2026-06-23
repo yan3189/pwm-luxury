@@ -371,6 +371,45 @@ export default function MemberOrderDetail() {
     }
   };
 
+// ========== HANDLE RETRY PAYMENT ==========
+const handleRetryPayment = async () => {
+  if (!order.snap_token) {
+    alert('Token pembayaran tidak ditemukan. Hubungi admin.');
+    return;
+  }
+
+  if (!window.snap || typeof window.snap.pay !== 'function') {
+    alert('Midtrans belum siap. Silakan refresh halaman.');
+    return;
+  }
+
+  try {
+    window.snap.pay(order.snap_token, {
+      onSuccess: (result) => {
+        console.log('✅ Payment Success:', result);
+        alert('Pembayaran berhasil!');
+        fetchOrder();
+      },
+      onPending: (result) => {
+        console.log('⏳ Payment Pending:', result);
+        alert('Pembayaran masih diproses. Tunggu konfirmasi.');
+        fetchOrder();
+      },
+      onError: (result) => {
+        console.log('❌ Payment Error:', result);
+        alert('Pembayaran gagal. Silakan coba lagi.');
+      },
+      onClose: () => {
+        console.log('🔄 Payment popup closed');
+        // Tidak ada tindakan khusus
+      }
+    });
+  } catch (error) {
+    console.error('❌ Retry payment error:', error);
+    alert('Gagal membuka pembayaran: ' + error.message);
+  }
+};
+
   const getStatusBadge = (status) => {
     const colors = {
       pending: 'bg-yellow-500/20 text-yellow-500',
@@ -597,6 +636,71 @@ export default function MemberOrderDetail() {
                     </div>
                   )}
                 </div>
+
+{/* ===== STATUS PEMBAYARAN ===== */}
+<div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-white/10">
+  <h3 className="font-semibold text-sm mb-2">💳 Status Pembayaran</h3>
+  
+  {order.payment_method === 'midtrans' ? (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-sm">Metode:</span>
+        <span className="text-sm font-medium text-yellow-500">Midtrans</span>
+      </div>
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-sm">Status:</span>
+        <span className={`text-sm font-medium ${
+          order.payment_status === 'settlement' ? 'text-green-400' :
+          order.payment_status === 'pending' ? 'text-yellow-400' :
+          order.payment_status === 'expire' || order.payment_status === 'cancel' ? 'text-red-400' :
+          'text-gray-400'
+        }`}>
+          {order.payment_status === 'settlement' ? '✅ Lunas' :
+           order.payment_status === 'pending' ? '⏳ Menunggu Pembayaran' :
+           order.payment_status === 'expire' ? '⏰ Kadaluarsa' :
+           order.payment_status === 'cancel' ? '❌ Dibatalkan' :
+           order.payment_status === 'refund' ? '🔄 Dikembalikan' :
+           order.payment_status || 'Menunggu'}
+        </span>
+      </div>
+      
+      {/* Tombol aksi jika status pending */}
+      {order.payment_status === 'pending' && (
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={handleRetryPayment}
+            className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
+          >
+            🔄 Lanjutkan Pembayaran
+          </button>
+          <button
+            onClick={handleCancelOrder}
+            className="bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm hover:bg-red-500/30 transition"
+          >
+            Batalkan Pesanan
+          </button>
+        </div>
+      )}
+      
+      {/* Jika expired atau cancel, tampilkan tombol pesan ulang (opsional) */}
+      {(order.payment_status === 'expire' || order.payment_status === 'cancel') && (
+        <div className="mt-3">
+          <button
+            onClick={handleRetryPayment}
+            className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
+          >
+            🔄 Buat Pembayaran Baru
+          </button>
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="text-sm text-gray-400">
+      Metode: Transfer Bank (Manual)
+      {order.payment_proof_url && <span className="text-green-400 ml-2">✓ Bukti diupload</span>}
+    </div>
+  )}
+</div>
 
                 <div>
                   <h2 className="font-semibold mb-2"><MapPin size={16} /> Alamat Pengiriman</h2>

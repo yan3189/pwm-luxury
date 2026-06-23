@@ -112,9 +112,11 @@ export async function createOrder(orderData, cartItems) {
       voucher_discount: orderData.voucher_discount || 0,
       final_total: finalTotal,
       notes: orderData.notes || null,
+      snap_token: orderData.snap_token || null, 
       payment_method: orderData.payment_method || 'manual_transfer',
       delivery_type: orderData.delivery_type || 'internal',
       status: 'pending',
+      payment_status: 'pending', // default
       upsell_items: orderData.upsell_items || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()

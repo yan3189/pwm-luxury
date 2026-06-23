@@ -584,6 +584,61 @@ export default function AdminOrderDetail() {
                     <span>Total</span>
                     <span className="text-yellow-500">Rp {finalTotal.toLocaleString()}</span>
                   </div>
+
+{/* ===== STATUS PEMBAYARAN ===== */}
+<div className="mt-4 p-3 bg-gray-800/50 rounded-lg border border-white/10">
+  <h3 className="font-semibold text-sm mb-2">💳 Status Pembayaran</h3>
+  {order.payment_method === 'midtrans' ? (
+    <div>
+      <div className="flex justify-between text-sm">
+        <span className="text-gray-400">Metode:</span>
+        <span className="text-yellow-500">Midtrans</span>
+      </div>
+      <div className="flex justify-between text-sm mt-1">
+        <span className="text-gray-400">Status:</span>
+        <span className={`font-medium ${
+          order.payment_status === 'settlement' ? 'text-green-400' :
+          order.payment_status === 'pending' ? 'text-yellow-400' :
+          order.payment_status === 'expire' || order.payment_status === 'cancel' ? 'text-red-400' :
+          'text-gray-400'
+        }`}>
+          {order.payment_status === 'settlement' ? '✅ Lunas' :
+           order.payment_status === 'pending' ? '⏳ Menunggu Pembayaran' :
+           order.payment_status === 'expire' ? '⏰ Kadaluarsa' :
+           order.payment_status === 'cancel' ? '❌ Dibatalkan' :
+           order.payment_status === 'refund' ? '🔄 Dikembalikan' :
+           order.payment_status || 'Menunggu'}
+        </span>
+      </div>
+      {order.snap_token && (
+        <div className="mt-2">
+          <button
+            onClick={() => {
+              // Admin bisa membuka popup pembayaran untuk debugging
+              if (window.snap) {
+                window.snap.pay(order.snap_token, {
+                  onSuccess: (result) => console.log('✅', result),
+                  onError: (result) => console.log('❌', result),
+                });
+              } else {
+                alert('Snap tidak tersedia.');
+              }
+            }}
+            className="text-xs text-yellow-500 hover:underline"
+          >
+            Buka Popup Pembayaran (Admin)
+          </button>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="text-sm text-gray-400">
+      Transfer Bank (Manual)
+      {order.payment_proof_url && <span className="text-green-400 ml-2">✓ Bukti diupload</span>}
+    </div>
+  )}
+</div>
+
                 </div>
               </div>
 
