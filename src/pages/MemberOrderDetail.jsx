@@ -284,9 +284,9 @@ export default function MemberOrderDetail() {
     const file = e.target.files[0];
     if (!file) return;
     
-    // ✅ Gunakan final_total dengan fallback aman
-    const nominal = order.final_total || 
-      (order.total_amount || 0) + (order.shipping_cost || 0) - (order.voucher_discount || 0);
+     // ✅ Gunakan final_total yang sudah dihitung di bawah
+  const nominal = order.final_total || 
+    (order.total_amount || 0) + (order.shipping_cost || 0) - (order.voucher_discount || 0);
     
     const confirmed = window.confirm(
       `Upload bukti transfer untuk pesanan #${order.order_number}?\n\n` +
@@ -676,23 +676,22 @@ const handleRetryPayment = async () => {
       <div className="flex items-center gap-2 mt-1">
         <span className="text-sm">Status:</span>
         <span className={`text-sm font-medium ${
-          order.payment_status === 'settlement' || order.status === 'paid' ? 'text-green-400' :
+          order.payment_status === 'settlement' || order.status === 'paid' || order.status === 'delivered' ? 'text-green-400' :
           order.payment_status === 'pending' ? 'text-yellow-400' :
           order.payment_status === 'expire' ? 'text-red-400' :
           order.payment_status === 'cancel' ? 'text-red-400' :
           'text-gray-400'
         }`}>
-          {order.payment_status === 'settlement' || order.status === 'paid' ? '✅ Lunas' :
+          {order.payment_status === 'settlement' || order.status === 'paid' || order.status === 'delivered' ? '✅ Lunas' :
            order.payment_status === 'pending' ? '⏳ Menunggu Pembayaran' :
            order.payment_status === 'expire' ? '⏰ Kadaluarsa' :
            order.payment_status === 'cancel' ? '❌ Dibatalkan' :
            order.payment_status === 'refund' ? '🔄 Dikembalikan' :
-           order.status === 'paid' ? '✅ Lunas' :
            order.payment_status || 'Menunggu'}
         </span>
       </div>
       
-      {/* Tombol aksi hanya jika status pending dan snap_token ada */}
+      {/* ✅ Tombol aksi HANYA jika status BELUM LUNAS */}
       {(order.payment_status === 'pending' || order.status === 'pending') && order.snap_token && (
         <div className="mt-3 flex gap-2">
           <button
@@ -775,9 +774,9 @@ const handleRetryPayment = async () => {
                     </a>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
+                </div>
+                </div>
+                )}
 
           {/* ========== TAB TRACKING ========== */}
           {activeTab === 'map' && (
