@@ -307,6 +307,62 @@ export default function AdminOrderDetail() {
     }
   };
 
+  // ========== HANDLE ADMIN POPUP ==========
+const handleAdminPopup = async () => {
+  if (!order.snap_token) {
+    alert('Token pembayaran tidak ditemukan.');
+    return;
+  }
+
+  // 🔥 Load Snap jika belum tersedia
+  let snap = window.snap;
+  if (!snap || typeof snap.pay !== 'function') {
+    try {
+      // Import dinamis
+      const { loadMidtransScript } = await import('../services/midtransService');
+      const clientKey = import.meta.env.VITE_MIDTRANS_CLIENT_KEY;
+      
+      if (!clientKey) {
+        alert('Midtrans tidak dikonfigurasi.');
+        return;
+      }
+      
+      await loadMidtransScript(clientKey);
+      snap = window.snap;
+      
+      if (!snap || typeof snap.pay !== 'function') {
+        alert('Gagal memuat Midtrans.');
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Failed to load Midtrans:', error);
+      alert('Gagal memuat Midtrans: ' + error.message);
+      return;
+    }
+  }
+
+  try {
+    snap.pay(order.snap_token, {
+      onSuccess: (result) => {
+        console.log('✅ Admin payment success:', result);
+        alert('Pembayaran berhasil!');
+        fetchOrder();
+      },
+      onError: (result) => {
+        console.log('❌ Admin payment error:', result);
+        alert('Pembayaran gagal.');
+      },
+      onClose: () => {
+        console.log('🔄 Admin popup closed');
+        fetchOrder();
+      }
+    });
+  } catch (error) {
+    console.error('❌ Admin popup error:', error);
+    alert('Gagal membuka pembayaran: ' + error.message);
+  }
+};
+
   // ========== REALTIME SUBSCRIPTION ==========
   useEffect(() => {
     if (!delivery || !delivery.id) {
@@ -611,25 +667,15 @@ export default function AdminOrderDetail() {
         </span>
       </div>
       {order.snap_token && (
-        <div className="mt-2">
-          <button
-            onClick={() => {
-              // Admin bisa membuka popup pembayaran untuk debugging
-              if (window.snap) {
-                window.snap.pay(order.snap_token, {
-                  onSuccess: (result) => console.log('✅', result),
-                  onError: (result) => console.log('❌', result),
-                });
-              } else {
-                alert('Snap tidak tersedia.');
-              }
-            }}
-            className="text-xs text-yellow-500 hover:underline"
-          >
-            Buka Popup Pembayaran (Admin)
-          </button>
-        </div>
-      )}
+  <div className="mt-2">
+    <button
+      onClick={handleAdminPopup}
+      className="text-xs text-yellow-500 hover:underline"
+    >
+      Buka Popup Pembayaran (Admin)
+    </button>
+  </div>
+)}
     </div>
   ) : (
     <div className="text-sm text-gray-400">

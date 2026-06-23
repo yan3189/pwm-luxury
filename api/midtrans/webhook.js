@@ -36,7 +36,9 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // Ambil data order dari database
+    console.log('✅ Signature verified!');
+
+    // Ambil data order
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('*')
@@ -48,14 +50,14 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Tentukan status berdasarkan notifikasi
+    // Tentukan status
     const transactionStatus = notification.transaction_status;
     const fraudStatus = notification.fraud_status;
 
     let newOrderStatus = order.status;
-    let newPaymentStatus = transactionStatus; // settlement, pending, deny, cancel, expire, refund
+    let newPaymentStatus = 'pending';
 
-    // Mapping status Midtrans ke status order
+    // Mapping status Midtrans
     if (transactionStatus === 'capture') {
       if (fraudStatus === 'accept') {
         newOrderStatus = 'paid';
@@ -81,31 +83,30 @@ export default async function handler(req, res) {
       newPaymentStatus = 'refund';
     }
 
-    // Update database jika status berubah
-    if (newOrderStatus !== order.status || newPaymentStatus !== order.payment_status) {
-      const updateData = {
-        status: newOrderStatus,
-        payment_status: newPaymentStatus,
-        updated_at: new Date().toISOString()
-      };
+    console.log(`📊 Status mapping: order=${newOrderStatus}, payment=${newPaymentStatus}`);
 
-      // Jika pembayaran berhasil, set payment_method ke midtrans
-      if (newOrderStatus === 'paid') {
-        updateData.payment_method = 'midtrans';
-      }
+    // Update database
+    const updateData = {
+      status: newOrderStatus,
+      payment_status: newPaymentStatus,
+      updated_at: new Date().toISOString()
+    };
 
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (updateError) {
-        console.error('❌ Failed to update order:', updateError);
-        return res.status(500).json({ error: 'Failed to update order' });
-      }
-
-      console.log(`✅ Order status updated: ${order.status} → ${newOrderStatus}, payment_status: ${newPaymentStatus}`);
+    if (newOrderStatus === 'paid') {
+      updateData.payment_method = 'midtrans';
     }
+
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId);
+
+    if (updateError) {
+      console.error('❌ Failed to update order:', updateError);
+      return res.status(500).json({ error: 'Failed to update order' });
+    }
+
+    console.log(`✅ Order updated: ${order.status} → ${newOrderStatus}, payment_status: ${newPaymentStatus}`);
 
     res.status(200).json({ success: true });
 

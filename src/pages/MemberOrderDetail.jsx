@@ -378,13 +378,34 @@ const handleRetryPayment = async () => {
     return;
   }
 
-  if (!window.snap || typeof window.snap.pay !== 'function') {
-    alert('Midtrans belum siap. Silakan refresh halaman.');
-    return;
+  // 🔥 Load Snap jika belum tersedia
+  let snap = window.snap;
+  if (!snap || typeof snap.pay !== 'function') {
+    try {
+      const { loadMidtransScript } = await import('../services/midtransService');
+      const clientKey = import.meta.env.VITE_MIDTRANS_CLIENT_KEY;
+      
+      if (!clientKey) {
+        alert('Midtrans tidak dikonfigurasi. Hubungi admin.');
+        return;
+      }
+      
+      await loadMidtransScript(clientKey);
+      snap = window.snap;
+      
+      if (!snap || typeof snap.pay !== 'function') {
+        alert('Gagal memuat Midtrans. Silakan refresh halaman.');
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Failed to load Midtrans:', error);
+      alert('Gagal memuat Midtrans: ' + error.message);
+      return;
+    }
   }
 
   try {
-    window.snap.pay(order.snap_token, {
+    snap.pay(order.snap_token, {
       onSuccess: (result) => {
         console.log('✅ Payment Success:', result);
         alert('Pembayaran berhasil!');
@@ -401,7 +422,8 @@ const handleRetryPayment = async () => {
       },
       onClose: () => {
         console.log('🔄 Payment popup closed');
-        // Tidak ada tindakan khusus
+        // Refresh status
+        fetchOrder();
       }
     });
   } catch (error) {
@@ -650,22 +672,24 @@ const handleRetryPayment = async () => {
       <div className="flex items-center gap-2 mt-1">
         <span className="text-sm">Status:</span>
         <span className={`text-sm font-medium ${
-          order.payment_status === 'settlement' ? 'text-green-400' :
+          order.payment_status === 'settlement' || order.status === 'paid' ? 'text-green-400' :
           order.payment_status === 'pending' ? 'text-yellow-400' :
-          order.payment_status === 'expire' || order.payment_status === 'cancel' ? 'text-red-400' :
+          order.payment_status === 'expire' ? 'text-red-400' :
+          order.payment_status === 'cancel' ? 'text-red-400' :
           'text-gray-400'
         }`}>
-          {order.payment_status === 'settlement' ? '✅ Lunas' :
+          {order.payment_status === 'settlement' || order.status === 'paid' ? '✅ Lunas' :
            order.payment_status === 'pending' ? '⏳ Menunggu Pembayaran' :
            order.payment_status === 'expire' ? '⏰ Kadaluarsa' :
            order.payment_status === 'cancel' ? '❌ Dibatalkan' :
            order.payment_status === 'refund' ? '🔄 Dikembalikan' :
+           order.status === 'paid' ? '✅ Lunas' :
            order.payment_status || 'Menunggu'}
         </span>
       </div>
       
-      {/* Tombol aksi jika status pending */}
-      {order.payment_status === 'pending' && (
+      {/* Tombol aksi hanya jika status pending dan snap_token ada */}
+      {(order.payment_status === 'pending' || order.status === 'pending') && order.snap_token && (
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleRetryPayment}
@@ -682,7 +706,7 @@ const handleRetryPayment = async () => {
         </div>
       )}
       
-      {/* Jika expired atau cancel, tampilkan tombol pesan ulang (opsional) */}
+      {/* Jika expired atau cancel */}
       {(order.payment_status === 'expire' || order.payment_status === 'cancel') && (
         <div className="mt-3">
           <button
