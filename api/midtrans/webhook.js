@@ -1,6 +1,5 @@
-// ============================================================
-// FILE: api/midtrans/webhook.js
-// ============================================================
+// ========== FILE: api/midtrans/webhook.js ==========
+// Tambahkan logging dan penanganan status yang lebih baik
 
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -68,6 +67,7 @@ export default async function handler(req, res) {
     let newOrderStatus = order.status;
     let newPaymentStatus = 'pending';
 
+    // ✅ LOGIKA STATUS YANG LEBIH JELAS
     if (transactionStatus === 'capture') {
       if (fraudStatus === 'accept') {
         newOrderStatus = 'paid';
@@ -82,15 +82,21 @@ export default async function handler(req, res) {
     } else if (transactionStatus === 'pending') {
       newOrderStatus = 'pending';
       newPaymentStatus = 'pending';
-    } else if (transactionStatus === 'deny' || transactionStatus === 'cancel') {
+    } else if (transactionStatus === 'deny') {
       newOrderStatus = 'cancelled';
-      newPaymentStatus = transactionStatus;
+      newPaymentStatus = 'deny';
+    } else if (transactionStatus === 'cancel') {
+      newOrderStatus = 'cancelled';
+      newPaymentStatus = 'cancel';
     } else if (transactionStatus === 'expire') {
       newOrderStatus = 'cancelled';
       newPaymentStatus = 'expire';
     } else if (transactionStatus === 'refund') {
       newOrderStatus = 'refunded';
       newPaymentStatus = 'refund';
+    } else if (transactionStatus === 'partial_refund') {
+      newOrderStatus = 'refunded';
+      newPaymentStatus = 'partial_refund';
     }
 
     console.log(`📊 Status update: ${order.status} → ${newOrderStatus}, payment: ${newPaymentStatus}`);
@@ -102,8 +108,10 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString()
     };
 
-    if (newOrderStatus === 'paid') {
+    // ✅ JIKA SUDAH LUNAS, TETAPKAN PAYMENT_METHOD
+    if (newPaymentStatus === 'settlement' || newPaymentStatus === 'capture') {
       updateData.payment_method = 'midtrans';
+      updateData.paid_at = new Date().toISOString();
     }
 
     const { error: updateError } = await supabase
@@ -118,6 +126,7 @@ export default async function handler(req, res) {
 
     console.log('✅ Order updated successfully!');
 
+    // ✅ KIRIM RESPON SUKSES
     res.status(200).json({ 
       success: true,
       message: 'Order updated',
