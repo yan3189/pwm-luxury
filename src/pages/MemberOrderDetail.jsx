@@ -680,6 +680,7 @@ const handleRetryPayment = async () => {
           order.payment_status === 'pending' ? 'text-yellow-400' :
           order.payment_status === 'expire' ? 'text-red-400' :
           order.payment_status === 'cancel' ? 'text-red-400' :
+          order.status === 'paid' ? 'text-green-400' :
           'text-gray-400'
         }`}>
           {order.payment_status === 'settlement' || order.status === 'paid' || order.status === 'delivered' ? '✅ Lunas' :
@@ -687,11 +688,12 @@ const handleRetryPayment = async () => {
            order.payment_status === 'expire' ? '⏰ Kadaluarsa' :
            order.payment_status === 'cancel' ? '❌ Dibatalkan' :
            order.payment_status === 'refund' ? '🔄 Dikembalikan' :
+           order.status === 'paid' ? '✅ Lunas' :
            order.payment_status || 'Menunggu'}
         </span>
       </div>
       
-      {/* ✅ Tombol aksi HANYA jika status BELUM LUNAS */}
+      {/* Tombol aksi HANYA jika status BELUM LUNAS */}
       {(order.payment_status === 'pending' || order.status === 'pending') && order.snap_token && (
         <div className="mt-3 flex gap-2">
           <button
@@ -742,6 +744,9 @@ const handleRetryPayment = async () => {
               </div>
 
               {/* Instruksi Pembayaran */}
+
+
+              
               <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
                 <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
                 <div className="bg-gray-800 rounded-lg p-3">
