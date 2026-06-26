@@ -519,45 +519,113 @@ export default function CheckoutPage() {
   };
 
 // ========== HANDLE MIDTRANS PAYMENT ==========
-// ============================================================
-// GABUNGKAN CART ITEMS + UPSEL ITEMS UNTUK MIDTRANS
-// ============================================================
-const allItemsForMidtrans = [
-  ...cart.items.map(item => ({
-    id: item.product_id,
-    name: item.name,
-    price: item.discounted_price || item.price,
-    quantity: item.quantity,
-    category: 'Product'
-  })),
-  ...selectedUpsells.map(item => {
-    const hasDiscount = item.has_discount && item.discount_percentage > 0;
-    const displayPrice = hasDiscount 
-      ? Math.round(item.price * (1 - item.discount_percentage / 100))
-      : item.price;
-    return {
-      id: item.product_id,
-      name: item.name,
-      price: displayPrice,
-      quantity: item.quantity,
-      category: 'Upsell'
-    };
-  })
-];
+const handleMidtransPayment = async () => {
+  const orderData = await prepareOrderData();
+  if (!orderData) return;
 
-const transaction = await createMidtransTransaction(
-  {
-    id: order.id,
-    order_number: order.order_number,
-    final_total: finalTotal,
-    guest_name: guestName,
-    guest_phone: guestPhone,
-    shipping_cost: effectiveShipping,
-    voucher_discount: voucherDiscount,
-    subtotal: subtotal
-  },
-  allItemsForMidtrans  // ← KIRIM SEMUA ITEM (CART + UPSEL)
-);
+  if (!snapLoaded) {
+    alert('Midtrans sedang dimuat, silakan tunggu...');
+    return;
+  }
+
+  setMidtransLoading(true);
+
+  try {
+    const {
+      memberId,
+      shippingAddress,
+      shippingLat,
+      shippingLng,
+      guestName,
+      guestPhone,
+      addressId,
+      baseSubtotal,
+      subtotal,
+      effectiveShipping,
+      finalTotal
+    } = orderData;
+
+    const orderPayload = {
+      store_id: cart.store_id,
+      member_id: memberId,
+      guest_name: guestName,
+      guest_phone: guestPhone,
+      shipping_address: shippingAddress,
+      shipping_latitude: shippingLat,
+      shipping_longitude: shippingLng,
+      shipping_cost: effectiveShipping,
+      notes: notes,
+      address_id: addressId,
+      voucher_discount: voucherDiscount,
+      final_total: finalTotal,
+      total_amount: baseSubtotal,
+      subtotal: subtotal,
+      payment_method: 'midtrans',
+      upsell_items: selectedUpsells.map(item => {
+        const hasDiscount = item.has_discount && item.discount_percentage > 0;
+        const discountedPrice = hasDiscount 
+          ? Math.round(item.price * (1 - item.discount_percentage / 100))
+          : item.price;
+        return {
+          product_id: item.product_id,
+          name: item.name,
+          price: item.price,
+          discounted_price: discountedPrice,
+          quantity: item.quantity,
+          has_discount: item.has_discount || false,
+          discount_percentage: item.discount_percentage || 0,
+          from_upsell: true
+        };
+      }),
+      selected_vouchers: selectedVouchers.map(v => v.id)
+    };
+
+    console.log('📊 ORDER PAYLOAD:', orderPayload);
+    
+    const order = await createOrder(orderPayload, cart.items);
+    console.log('✅ Order created:', order);
+
+    // ============================================================
+    // GABUNGKAN CART ITEMS + UPSEL ITEMS UNTUK MIDTRANS
+    // ============================================================
+    const allItemsForMidtrans = [
+      ...cart.items.map(item => ({
+        id: item.product_id,
+        name: item.name,
+        price: item.discounted_price || item.price,
+        quantity: item.quantity,
+        category: 'Product'
+      })),
+      ...selectedUpsells.map(item => {
+        const hasDiscount = item.has_discount && item.discount_percentage > 0;
+        const displayPrice = hasDiscount 
+          ? Math.round(item.price * (1 - item.discount_percentage / 100))
+          : item.price;
+        return {
+          id: item.product_id,
+          name: item.name,
+          price: displayPrice,
+          quantity: item.quantity,
+          category: 'Upsell'
+        };
+      })
+    ];
+
+    console.log('📊 All items for Midtrans:', allItemsForMidtrans);
+
+    const transaction = await createMidtransTransaction(
+      {
+        id: order.id,
+        order_number: order.order_number,
+        final_total: finalTotal,
+        guest_name: guestName,
+        guest_phone: guestPhone,
+        shipping_cost: effectiveShipping,
+        voucher_discount: voucherDiscount,
+        subtotal: subtotal
+      },
+      allItemsForMidtrans
+    );
 
     console.log('✅ Midtrans transaction created:', transaction);
 
@@ -573,11 +641,10 @@ const transaction = await createMidtransTransaction(
       console.log('✅ snap_token saved to order');
     }
 
-    // 🔥 Buka popup pembayaran - TUNGGU SAMPAI SELESAI
+    // Buka popup pembayaran
     const result = await openMidtransPayment(transaction.snapToken);
     console.log('📊 Payment result:', result);
 
-    // 🔥 Jika result adalah 'closed' (popup ditutup tanpa aksi), redirect ke halaman pesanan
     if (result && result.status === 'closed') {
       alert('Pembayaran belum selesai. Anda dapat melanjutkan dari halaman pesanan.');
       if (user) {
@@ -588,7 +655,6 @@ const transaction = await createMidtransTransaction(
       return;
     }
 
-    // Redirect setelah pembayaran berhasil/pending
     if (user) {
       navigate(`/member/orders/${order.id}`);
     } else {
@@ -605,9 +671,7 @@ const transaction = await createMidtransTransaction(
     }
     alert(errorMessage);
     
-    // 🔥 Jika error, tetap redirect ke halaman pesanan agar user tidak kehilangan order
     try {
-      // Coba ambil order terakhir yang dibuat
       const { data: lastOrder } = await supabase
         .from('orders')
         .select('id')
@@ -624,11 +688,9 @@ const transaction = await createMidtransTransaction(
         }
       }
     } catch (navError) {
-      // Jika gagal redirect, ke halaman utama
       navigate('/');
     }
   } finally {
-    // 🔥 PASTIKAN loading hilang
     setMidtransLoading(false);
   }
 };
