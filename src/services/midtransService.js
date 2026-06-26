@@ -2,7 +2,7 @@
 // FILE: src/services/midtransService.js
 // ============================================================
 
-export async function createMidtransTransaction(orderData, cartItems) {
+export async function createMidtransTransaction(orderData, allItems) {
   try {
     const response = await fetch('/api/midtrans/create-transaction', {
       method: 'POST',
@@ -16,14 +16,13 @@ export async function createMidtransTransaction(orderData, cartItems) {
         customerName: orderData.guest_name || 'Customer',
         customerEmail: orderData.customer_email || 'customer@example.com',
         customerPhone: orderData.guest_phone || '08123456789',
-        items: cartItems.map(item => ({
-          id: item.product_id,
+        items: allItems.map(item => ({
+          id: item.id,
           name: item.name,
-          price: item.discounted_price || item.price,
+          price: item.price,
           quantity: item.quantity,
-          category: 'Product'
+          category: item.category || 'Product'
         })),
-        // ✅ KIRIM DATA ONGKIR & DISKON
         shippingCost: orderData.shipping_cost || 0,
         voucherDiscount: orderData.voucher_discount || 0,
         subtotal: orderData.subtotal || 0

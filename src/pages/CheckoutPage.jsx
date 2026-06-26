@@ -519,85 +519,45 @@ export default function CheckoutPage() {
   };
 
 // ========== HANDLE MIDTRANS PAYMENT ==========
-const handleMidtransPayment = async () => {
-  const orderData = await prepareOrderData();
-  if (!orderData) return;
-
-  if (!snapLoaded) {
-    alert('Midtrans sedang dimuat, silakan tunggu...');
-    return;
-  }
-
-  setMidtransLoading(true);
-
-  try {
-    const {
-      memberId,
-      shippingAddress,
-      shippingLat,
-      shippingLng,
-      guestName,
-      guestPhone,
-      addressId,
-      baseSubtotal,
-      subtotal,
-      effectiveShipping,
-      finalTotal
-    } = orderData;
-
-    const orderPayload = {
-      store_id: cart.store_id,
-      member_id: memberId,
-      guest_name: guestName,
-      guest_phone: guestPhone,
-      shipping_address: shippingAddress,
-      shipping_latitude: shippingLat,
-      shipping_longitude: shippingLng,
-      shipping_cost: effectiveShipping,
-      notes: notes,
-      address_id: addressId,
-      voucher_discount: voucherDiscount,
-      final_total: finalTotal,
-      total_amount: baseSubtotal,
-      subtotal: subtotal,
-      payment_method: 'midtrans',
-      upsell_items: selectedUpsells.map(item => {
-        const hasDiscount = item.has_discount && item.discount_percentage > 0;
-        const discountedPrice = hasDiscount 
-          ? Math.round(item.price * (1 - item.discount_percentage / 100))
-          : item.price;
-        return {
-          product_id: item.product_id,
-          name: item.name,
-          price: item.price,
-          discounted_price: discountedPrice,
-          quantity: item.quantity,
-          has_discount: item.has_discount || false,
-          discount_percentage: item.discount_percentage || 0,
-          from_upsell: true
-        };
-      }),
-      selected_vouchers: selectedVouchers.map(v => v.id)
+// ============================================================
+// GABUNGKAN CART ITEMS + UPSEL ITEMS UNTUK MIDTRANS
+// ============================================================
+const allItemsForMidtrans = [
+  ...cart.items.map(item => ({
+    id: item.product_id,
+    name: item.name,
+    price: item.discounted_price || item.price,
+    quantity: item.quantity,
+    category: 'Product'
+  })),
+  ...selectedUpsells.map(item => {
+    const hasDiscount = item.has_discount && item.discount_percentage > 0;
+    const displayPrice = hasDiscount 
+      ? Math.round(item.price * (1 - item.discount_percentage / 100))
+      : item.price;
+    return {
+      id: item.product_id,
+      name: item.name,
+      price: displayPrice,
+      quantity: item.quantity,
+      category: 'Upsell'
     };
+  })
+];
 
-    console.log('📊 ORDER PAYLOAD:', orderPayload);
-    
-    const order = await createOrder(orderPayload, cart.items);
-    console.log('✅ Order created:', order);
-
-    const transaction = await createMidtransTransaction(
-      {
-        id: order.id,
-        order_number: order.order_number,
-        final_total: finalTotal,
-        guest_name: guestName,
-        guest_phone: guestPhone,
-        shipping_cost: effectiveShipping,
-        voucher_discount: voucherDiscount,
-        subtotal: subtotal
-      },
-      cart.items
-    );
+const transaction = await createMidtransTransaction(
+  {
+    id: order.id,
+    order_number: order.order_number,
+    final_total: finalTotal,
+    guest_name: guestName,
+    guest_phone: guestPhone,
+    shipping_cost: effectiveShipping,
+    voucher_discount: voucherDiscount,
+    subtotal: subtotal
+  },
+  allItemsForMidtrans  // ← KIRIM SEMUA ITEM (CART + UPSEL)
+);
 
     console.log('✅ Midtrans transaction created:', transaction);
 
