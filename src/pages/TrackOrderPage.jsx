@@ -18,6 +18,7 @@ export default function TrackOrderPage() {
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState('detail');
+  const [snapLoaded, setSnapLoaded] = useState(false);
   
   // Tracking state
   const [delivery, setDelivery] = useState(null);
@@ -116,7 +117,7 @@ export default function TrackOrderPage() {
       }
     }
     
-    // Step 5: Ambil polyline (prioritas: start_route_polyline → distance_cache)
+    // Step 5: Ambil polyline
     console.log('🔍 Fetching polyline...');
     console.log('deliveryData?.start_route_polyline exists?', !!deliveryData?.start_route_polyline);
     
@@ -192,17 +193,13 @@ export default function TrackOrderPage() {
         if (isTrackingActive === 'timeout') setIsTrackingActive(true);
         if (heading !== undefined) setCourierHeading(heading);
         
-        // Update lokasi kurir
-        console.log('🎯 Setting courier location to:', [lat, lng]);
         setCourierLocation([lat, lng]);
         
-        // Hitung ETA
         if (destLat && destLng && lat && lng) {
           const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
           setEta(newEta);
         }
         
-        // Update map center
         if (mapRef.current && lat && lng) {
           mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
         }
@@ -232,7 +229,6 @@ export default function TrackOrderPage() {
         console.log('📡 Realtime subscription status:', status);
       });
     
-    // Timeout detection
     statusCheckInterval = setInterval(() => {
       if (!isMounted) return;
       if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
@@ -254,7 +250,14 @@ export default function TrackOrderPage() {
     const file = e.target.files[0];
     if (!file) return;
     
-    const confirmed = window.confirm(`Upload bukti transfer untuk pesanan #${order.order_number}?\n\nFile: ${file.name}\n\nPastikan bukti transfer sesuai dengan nominal Rp ${order.total_amount?.toLocaleString()}`);
+    const nominal = order.final_total || 
+      (order.total_amount || 0) + (order.shipping_cost || 0) - (order.voucher_discount || 0);
+    
+    const confirmed = window.confirm(
+      `Upload bukti transfer untuk pesanan #${order.order_number}?\n\n` +
+      `File: ${file.name}\n\n` +
+      `Pastikan bukti transfer sesuai dengan nominal Rp ${nominal.toLocaleString()}`
+    );
     if (!confirmed) return;
     
     if (file.size > 2 * 1024 * 1024) {
@@ -316,6 +319,74 @@ export default function TrackOrderPage() {
     setCancelling(false);
   };
 
+  // ========== HANDLE RETRY PAYMENT (UNTUK MIDTRANS) ==========
+  const handleRetryPayment = async () => {
+    if (!order.snap_token) {
+      alert('Token pembayaran tidak ditemukan.');
+      return;
+    }
+
+    // Load Snap jika belum tersedia
+    let snap = window.snap;
+    if (!snap || typeof snap.pay !== 'function') {
+      try {
+        const { loadMidtransScript } = await import('../services/midtransService');
+        const clientKey = import.meta.env.VITE_MIDTRANS_CLIENT_KEY;
+        
+        if (!clientKey) {
+          alert('Midtrans tidak dikonfigurasi.');
+          return;
+        }
+        
+        await loadMidtransScript(clientKey);
+        snap = window.snap;
+        setSnapLoaded(true);
+        
+        if (!snap || typeof snap.pay !== 'function') {
+          alert('Gagal memuat Midtrans. Silakan refresh halaman.');
+          return;
+        }
+      } catch (error) {
+        console.error('❌ Failed to load Midtrans:', error);
+        alert('Gagal memuat Midtrans: ' + error.message);
+        return;
+      }
+    }
+
+    // Cek apakah sudah lunas
+    if (order.payment_status === 'settlement' || order.status === 'paid' || order.status === 'processing' || order.status === 'shipping' || order.status === 'delivered') {
+      alert('Pembayaran sudah lunas!');
+      return;
+    }
+
+    try {
+      snap.pay(order.snap_token, {
+        onSuccess: async (result) => {
+          console.log('✅ Payment Success:', result);
+          alert('Pembayaran berhasil!');
+          await fetchOrder();
+          setTimeout(() => fetchOrder(), 3000);
+        },
+        onPending: (result) => {
+          console.log('⏳ Payment Pending:', result);
+          alert('Pembayaran masih diproses. Tunggu konfirmasi.');
+          fetchOrder();
+        },
+        onError: (result) => {
+          console.log('❌ Payment Error:', result);
+          alert('Pembayaran gagal. Silakan coba lagi.');
+        },
+        onClose: () => {
+          console.log('🔄 Payment popup closed');
+          fetchOrder();
+        }
+      });
+    } catch (error) {
+      console.error('❌ Retry payment error:', error);
+      alert('Gagal membuka pembayaran: ' + error.message);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const colors = {
       pending: 'bg-yellow-500/20 text-yellow-500',
@@ -361,10 +432,19 @@ export default function TrackOrderPage() {
   const storeLocation = store?.latitude && store?.longitude ? [store.latitude, store.longitude] : null;
   const destination = order?.shipping_latitude && order?.shipping_longitude ? [order.shipping_latitude, order.shipping_longitude] : null;
   const showTrackingTab = delivery && delivery?.status !== 'completed' && delivery?.status !== 'cancelled';
-  const canUpload = order?.status === 'pending' && !order?.payment_proof_url;
+  const canUpload = order?.status === 'pending' && !order?.payment_proof_url && order?.payment_method !== 'midtrans';
   const canCancel = order?.status === 'pending';
   const canRequestCancellation = ['paid', 'processing'].includes(order?.status);
-  const subtotal = (order?.total_amount || 0) - (order?.shipping_cost || 0);
+  
+  // Hitung subtotal & final total
+  const cartSubtotal = order?.total_amount || 0;
+  const upsellItems = order?.upsell_items || [];
+  const upsellTotal = upsellItems.reduce((sum, item) => {
+    const price = item.discounted_price || item.price || 0;
+    return sum + (price * (item.quantity || 1));
+  }, 0);
+  const subtotal = cartSubtotal + upsellTotal;
+  const finalTotal = order?.final_total || (subtotal + (order?.shipping_cost || 0) - (order?.voucher_discount || 0));
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>;
   if (error) return (
@@ -379,6 +459,11 @@ export default function TrackOrderPage() {
     </div>
   );
   if (!order) return null;
+
+  // Cek status pembayaran
+  const isPaid = order.payment_status === 'settlement' || order.payment_status === 'capture' || order.status === 'paid' || order.status === 'processing' || order.status === 'shipping' || order.status === 'delivered';
+  const isPending = order.payment_status === 'pending' || order.status === 'pending';
+  const isExpiredOrCancelled = order.payment_status === 'expire' || order.payment_status === 'cancel' || order.payment_status === 'deny';
 
   return (
     <div className="bg-black text-white min-h-screen">
@@ -452,9 +537,15 @@ export default function TrackOrderPage() {
                       <span>Ongkos Kirim</span>
                       <span>Rp {(order.shipping_cost || 0).toLocaleString()}</span>
                     </div>
+                    {(order.voucher_discount || 0) > 0 && (
+                      <div className="flex justify-between text-green-400 text-sm">
+                        <span>Diskon Voucher</span>
+                        <span>-Rp {(order.voucher_discount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-lg pt-2 border-t border-white/10">
                       <span>Total</span>
-                      <span>Rp {order.total_amount.toLocaleString()}</span>
+                      <span className="text-yellow-500">Rp {finalTotal.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -475,33 +566,102 @@ export default function TrackOrderPage() {
                 </div>
               </div>
 
-              {/* Instruksi Pembayaran */}
-              <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
-                <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
-                  <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
-                  <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
-                </div>
-                <p className="text-sm mt-2">Nominal: <span className="font-bold text-yellow-500">Rp {order.total_amount.toLocaleString()}</span></p>
-                {canUpload && (
-                  <div className="mt-4">
-                    <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer w-fit hover:bg-yellow-600 transition">
-                      <Upload size={16} /> {uploading ? 'Mengupload...' : 'Upload Bukti Transfer'}
-                      <input type="file" accept="image/*" onChange={handleUploadProof} disabled={uploading} className="hidden" />
-                    </label>
-                    <p className="text-xs text-gray-400 mt-1">Format: JPG, PNG (max 2MB)</p>
-                  </div>
-                )}
-                {order.payment_proof_url && (
-                  <div className="mt-4">
-                    <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
-                    <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
-                      <Eye size={14} /> Lihat bukti transfer
-                    </a>
+              {/* ===== STATUS PEMBAYARAN ===== */}
+              <div className="p-4 bg-gray-800/50 rounded-lg border border-white/10">
+                <h3 className="font-semibold text-sm mb-2">💳 Status Pembayaran</h3>
+                
+                {order.payment_method === 'midtrans' ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">Metode:</span>
+                      <span className="text-sm font-medium text-yellow-500">Midtrans</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm">Status:</span>
+                      <span className={`text-sm font-medium ${
+                        isPaid ? 'text-green-400' :
+                        isPending ? 'text-yellow-400' :
+                        isExpiredOrCancelled ? 'text-red-400' :
+                        'text-gray-400'
+                      }`}>
+                        {isPaid ? '✅ Lunas' :
+                         isPending ? '⏳ Menunggu Pembayaran' :
+                         isExpiredOrCancelled ? '⏰ Kadaluarsa / Dibatalkan' :
+                         order.payment_status || 'Menunggu'}
+                      </span>
+                    </div>
+                    
+                    {/* TOMBOL LANJUTKAN PEMBAYARAN */}
+                    {isPending && order.snap_token && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={handleRetryPayment}
+                          className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
+                        >
+                          🔄 Lanjutkan Pembayaran
+                        </button>
+                        <button
+                          onClick={handleCancelOrder}
+                          className="bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm hover:bg-red-500/30 transition"
+                        >
+                          Batalkan Pesanan
+                        </button>
+                      </div>
+                    )}
+                    
+                    {isExpiredOrCancelled && (
+                      <div className="mt-3">
+                        <button
+                          onClick={handleRetryPayment}
+                          className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
+                        >
+                          🔄 Buat Pembayaran Baru
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // ===== MANUAL TRANSFER =====
+                  <div className="text-sm text-gray-400">
+                    Metode: Transfer Bank (Manual)
+                    {order.payment_proof_url && <span className="text-green-400 ml-2">✓ Bukti diupload</span>}
                   </div>
                 )}
               </div>
+
+              {/* ===== INSTRUKSI PEMBAYARAN (MANUAL TRANSFER) ===== */}
+              {order.payment_method === 'manual_transfer' && order.status === 'pending' && !order.payment_proof_url && (
+                <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
+                  <h3 className="font-semibold text-yellow-500 mb-2">📋 Instruksi Pembayaran Transfer Bank</h3>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
+                    <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
+                    <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
+                  </div>
+                  <p className="text-sm mt-2">
+                    Nominal: <span className="font-bold text-yellow-500">
+                      Rp {finalTotal.toLocaleString()}
+                    </span>
+                  </p>
+                  {canUpload && (
+                    <div className="mt-4">
+                      <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer w-fit hover:bg-yellow-600 transition">
+                        <Upload size={16} /> {uploading ? 'Mengupload...' : 'Upload Bukti Transfer'}
+                        <input type="file" accept="image/*" onChange={handleUploadProof} disabled={uploading} className="hidden" />
+                      </label>
+                      <p className="text-xs text-gray-400 mt-1">Format: JPG, PNG (max 2MB)</p>
+                    </div>
+                  )}
+                  {order.payment_proof_url && (
+                    <div className="mt-4">
+                      <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
+                      <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
+                        <Eye size={14} /> Lihat bukti transfer
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

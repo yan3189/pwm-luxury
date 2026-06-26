@@ -756,15 +756,7 @@ const checkPaymentStatus = async () => {
            order.payment_status === 'refund' ? '🔄 Dikembalikan' :
            order.payment_status || 'Menunggu'}
 
-           {/* Tombol Cek Status Manual - HANYA UNTUK DEBUG */}
-{order.payment_method === 'midtrans' && (
-  <button
-    onClick={checkPaymentStatus}
-    className="text-xs text-gray-400 hover:text-yellow-500 transition mt-2"
-  >
-    🔄 Cek Status Pembayaran
-  </button>
-)}
+
         </span>
       </div>
       
