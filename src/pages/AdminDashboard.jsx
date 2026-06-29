@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus
+  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus, X
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
@@ -91,6 +91,89 @@ export default function AdminDashboard() {
       setLoading(false)
     }
   }
+
+  // ============================================================
+// TAMBAHKAN DI BAGIAN SUPER ADMIN RENDER
+// ============================================================
+
+// 1. Tambahkan state untuk modal
+const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
+const [newAdminForm, setNewAdminForm] = useState({
+  email: '',
+  full_name: '',
+  phone: '',
+  password: '',
+  store_id: ''
+});
+const [creatingAdmin, setCreatingAdmin] = useState(false);
+const [generatedPassword, setGeneratedPassword] = useState('');
+
+// 2. Fungsi generate password
+const generatePassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
+
+// 3. Fungsi create store admin
+// ============================================================
+// FUNGSI CREATE STORE ADMIN (PAKAI API ROUTE)
+// ============================================================
+const handleCreateStoreAdmin = async () => {
+  const { email, full_name, phone, password, store_id } = newAdminForm;
+  
+  if (!email || !full_name || !password || !store_id) {
+    alert('Semua field wajib diisi!');
+    return;
+  }
+
+  // ✅ Trim & lowercase
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = full_name.trim();
+
+  setCreatingAdmin(true);
+
+  try {
+    console.log('📤 Creating store admin with email:', cleanEmail);
+    
+    const response = await fetch('/api/admin/create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: cleanEmail,
+        password: password,
+        full_name: cleanName,
+        phone: phone?.trim() || '',
+        role: 'store_admin',
+        store_id: store_id
+      })
+    });
+
+    // ✅ Cek response
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Gagal membuat akun');
+    }
+
+    alert(`✅ Akun Store Admin berhasil dibuat!\n\nEmail: ${cleanEmail}\nPassword: ${password}\n\nSimpan password ini dengan aman.`);
+    
+    setShowCreateAdminModal(false);
+    setNewAdminForm({ email: '', full_name: '', phone: '', password: '', store_id: '' });
+    setGeneratedPassword('');
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    alert('Gagal membuat akun: ' + error.message);
+  }
+
+  setCreatingAdmin(false);
+};
 
   // Ambil data dashboard (store info + preview)
   const fetchDashboardData = async (targetStoreId) => {
@@ -384,7 +467,17 @@ rawOrders.forEach(order => {
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <div><h1 className="text-3xl font-display">Super Admin Dashboard</h1><p className="text-gray-400">Selamat datang, Super Admin</p></div>
-            <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
+                <button
+      onClick={() => {
+        setGeneratedPassword(generatePassword());
+        setNewAdminForm(prev => ({ ...prev, password: generatePassword() }));
+        setShowCreateAdminModal(true);
+      }}
+      className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full text-sm flex items-center gap-2 transition"
+    >
+      <UserPlus size={16} /> Buat Store Admin
+    </button>
+    <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
           </div>
 
           {/* Pilih Store */}
@@ -399,6 +492,8 @@ rawOrders.forEach(order => {
           <div className="mb-6 flex flex-wrap gap-3">
             <button onClick={() => navigate('/admin/master-categories')} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm"><Settings size={16} /> Master Kategori</button>
           </div>
+
+
 
           {/* Preview Ringkasan (jumlah) */}
           {store && (
@@ -526,6 +621,119 @@ rawOrders.forEach(order => {
             )}
           </div>
         </div>
+
+{/* ===== MODAL CREATE STORE ADMIN ===== */}
+{showCreateAdminModal && (
+  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10 max-h-[90vh] overflow-y-auto">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-display">Buat Akun Store Admin</h2>
+        <button 
+          onClick={() => setShowCreateAdminModal(false)} 
+          className="text-gray-400 hover:text-white"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {/* Nama Lengkap */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Nama Lengkap *</label>
+          <input
+            type="text"
+            className="w-full p-2 rounded bg-black/50 border border-white/20"
+            value={newAdminForm.full_name}
+            onChange={(e) => setNewAdminForm({ ...newAdminForm, full_name: e.target.value })}
+            placeholder="Nama Store Admin"
+          />
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Email *</label>
+          <input
+            type="email"
+            className="w-full p-2 rounded bg-black/50 border border-white/20"
+            value={newAdminForm.email}
+            onChange={(e) => setNewAdminForm({ ...newAdminForm, email: e.target.value })}
+            placeholder="admin@store.com"
+          />
+        </div>
+
+        {/* Phone */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Nomor Telepon</label>
+          <input
+            type="tel"
+            className="w-full p-2 rounded bg-black/50 border border-white/20"
+            value={newAdminForm.phone}
+            onChange={(e) => setNewAdminForm({ ...newAdminForm, phone: e.target.value })}
+            placeholder="08123456789"
+          />
+        </div>
+
+        {/* Password (auto-generated) */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Password *</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="flex-1 p-2 rounded bg-black/50 border border-white/20 font-mono"
+              value={newAdminForm.password}
+              onChange={(e) => setNewAdminForm({ ...newAdminForm, password: e.target.value })}
+              placeholder="Password otomatis"
+            />
+            <button
+              onClick={() => {
+                const newPass = generatePassword();
+                setNewAdminForm({ ...newAdminForm, password: newPass });
+                setGeneratedPassword(newPass);
+              }}
+              className="bg-gray-700 px-3 py-2 rounded-lg hover:bg-gray-600 transition text-sm"
+              title="Generate password baru"
+            >
+              🔄
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">Klik tombol 🔄 untuk generate password otomatis</p>
+        </div>
+
+        {/* Pilih Store */}
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Pilih Store *</label>
+          <select
+            className="w-full p-2 rounded bg-black/50 border border-white/20"
+            value={newAdminForm.store_id}
+            onChange={(e) => setNewAdminForm({ ...newAdminForm, store_id: e.target.value })}
+          >
+            <option value="">-- Pilih Store --</option>
+            {storesList.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={handleCreateStoreAdmin}
+          disabled={creatingAdmin}
+          className="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded-lg font-semibold disabled:opacity-50 transition"
+        >
+          {creatingAdmin ? 'Memproses...' : 'Buat Akun'}
+        </button>
+        <button
+          onClick={() => setShowCreateAdminModal(false)}
+          className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
+        >
+          Batal
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       </div>
     )
   }
