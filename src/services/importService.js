@@ -80,29 +80,47 @@ export function validateStock(value) {
 export function validateStatus(value) {
   if (!value) return { valid: true, value: true, error: null };
   const str = String(value).toLowerCase().trim();
-  if (str === 'aktif' || str === 'active' || str === 'true' || str === '1') {
+  
+  // ✅ Status AKTIF
+  if (str === 'aktif' || str === 'active' || str === 'true' || str === '1' || str === 'yes' || str === 'y') {
     return { valid: true, value: true, error: null };
   }
-  if (str === 'tidak' || str === 'nonaktif' || str === 'inactive' || str === 'false' || str === '0') {
+  
+  // ✅ Status TIDAK AKTIF
+  if (str === 'nonaktif' || str === 'tidak aktif' || str === 'inactive' || str === 'false' || str === '0' || str === 'no' || str === 'n') {
     return { valid: true, value: false, error: null };
   }
-  return { valid: false, value: null, error: 'Status harus "aktif" atau "tidak"' };
+  
+  // ❌ Jika tidak dikenali, default true dan beri peringatan
+  return { valid: true, value: true, error: null };
 }
 
 /**
- * Validasi dan sanitasi 1 baris produk
- * @param {Array} row - Array dari Excel
- * @param {number} rowIndex - Index baris (untuk error reporting)
- * @returns {Object} { valid: boolean, data: Object, errors: Array }
+ * Cek apakah produk sudah ada di store tertentu
+ * @param {string} storeId - ID store
+ * @param {string} productName - Nama produk (case insensitive)
+ * @returns {Promise<boolean>} true jika sudah ada
  */
-export function validateProductRow(row, rowIndex) {
+export async function checkProductExists(storeId, productName) {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, name')
+    .eq('store_id', storeId)
+    .ilike('name', productName)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error checking product:', error);
+    return false;
+  }
+  return !!data;
+}
+
+/**
+ * Validasi produk dengan header (menggunakan objek, bukan array)
+ */
+export function validateProductRowWithHeaders({ nameRaw, priceRaw, descRaw, stockRaw, imageRaw, statusRaw, rowIndex }) {
   const errors = [];
-  const nameRaw = row[0] || '';
-  const priceRaw = row[1];
-  const descRaw = row[2] || '';
-  const stockRaw = row[3];
-  const imageRaw = row[4] || '';
-  const statusRaw = row[5] || 'aktif';
 
   // 1. Nama Produk (wajib, sanitasi)
   const name = sanitizeString(nameRaw);
@@ -116,7 +134,7 @@ export function validateProductRow(row, rowIndex) {
     errors.push(`Baris ${rowIndex}: ${priceResult.error}`);
   }
 
-  // 3. Deskripsi (opsional, sanitasi)
+  // 3. Deskripsi (opsional)
   const description = sanitizeString(descRaw);
 
   // 4. Stok
@@ -125,13 +143,8 @@ export function validateProductRow(row, rowIndex) {
     errors.push(`Baris ${rowIndex}: ${stockResult.error}`);
   }
 
-  // 5. URL Gambar (opsional, sanitasi)
+  // 5. URL Gambar (opsional)
   const imageUrl = sanitizeString(imageRaw);
-  // Validasi URL (opsional)
-  if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-    // Tidak error, hanya warning (admin bisa memasukkan URL relatif)
-    // Tapi kita tetap sanitasi
-  }
 
   // 6. Status
   const statusResult = validateStatus(statusRaw);
@@ -139,12 +152,10 @@ export function validateProductRow(row, rowIndex) {
     errors.push(`Baris ${rowIndex}: ${statusResult.error}`);
   }
 
-  // Jika ada error, return invalid
   if (errors.length > 0) {
     return { valid: false, data: null, errors };
   }
 
-  // Data valid
   return {
     valid: true,
     data: {
@@ -153,8 +164,7 @@ export function validateProductRow(row, rowIndex) {
       description,
       stock: stockResult.value,
       image_url: imageUrl,
-      is_active: statusResult.value,
-      // Default values (tidak dari Excel)
+      is_active: statusResult.value !== undefined ? statusResult.value : true,
       has_discount: false,
       discount_percentage: 0,
       is_featured: false,
@@ -177,35 +187,104 @@ export async function parseExcelFile(file) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+        // ✅ PARSE DENGAN HEADER (MENCARI NAMA KOLOM)
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
-        // Skip header (baris pertama)
-        const rows = jsonData.slice(1);
-        
+        // Jika tidak ada data
+        if (!jsonData || jsonData.length === 0) {
+          resolve({
+            success: false,
+            data: [],
+            errors: ['File Excel kosong atau tidak memiliki header yang valid'],
+            totalRows: 0,
+            validCount: 0,
+            fileName: file.name,
+          });
+          return;
+        }
+
+        // Cari nama kolom yang sesuai (case insensitive)
+        const headers = Object.keys(jsonData[0] || {});
+        const findColumn = (possibleNames) => {
+          for (const name of possibleNames) {
+            const found = headers.find(h => h.toLowerCase().trim() === name.toLowerCase().trim());
+            if (found) return found;
+          }
+          // Coba cari dengan includes
+          for (const name of possibleNames) {
+            const found = headers.find(h => h.toLowerCase().trim().includes(name.toLowerCase().trim()));
+            if (found) return found;
+          }
+          return null;
+        };
+
+        const nameCol = findColumn(['Nama Produk', 'nama produk', 'nama', 'product name', 'name']);
+        const priceCol = findColumn(['Harga', 'harga', 'price']);
+        const descCol = findColumn(['Deskripsi', 'deskripsi', 'description']);
+        const stockCol = findColumn(['Stok', 'stok', 'stock']);
+        const imageCol = findColumn(['URL Gambar', 'url gambar', 'image_url', 'image']);
+        const statusCol = findColumn(['Status', 'status', 'is_active', 'active']);
+
+        console.log('📊 Column mapping found:', { nameCol, priceCol, descCol, stockCol, imageCol, statusCol });
+
+        // Validasi apakah kolom wajib ada
+        if (!nameCol) {
+          resolve({
+            success: false,
+            data: [],
+            errors: ['Kolom "Nama Produk" tidak ditemukan di file Excel. Pastikan header sesuai dengan template.'],
+            totalRows: 0,
+            validCount: 0,
+            fileName: file.name,
+          });
+          return;
+        }
+
         // Validasi setiap baris
         const validatedRows = [];
         const errors = [];
-        let hasValidData = false;
+        let rowIndex = 2; // Baris pertama = header
 
-        rows.forEach((row, index) => {
+        jsonData.forEach((row) => {
+          // Ambil nilai dari kolom yang ditemukan
+          const nameRaw = nameCol ? row[nameCol] : '';
+          const priceRaw = priceCol ? row[priceCol] : 0;
+          const descRaw = descCol ? row[descCol] : '';
+          const stockRaw = stockCol ? row[stockCol] : 0;
+          const imageRaw = imageCol ? row[imageCol] : '';
+          const statusRaw = statusCol ? row[statusCol] : 'aktif';
+
           // Lewati baris kosong (semua kolom kosong)
-          const isEmpty = row.every(cell => String(cell).trim() === '');
-          if (isEmpty) return;
+          const isEmpty = !nameRaw && !priceRaw && !descRaw && !stockRaw;
+          if (isEmpty) {
+            rowIndex++;
+            return;
+          }
 
-          const result = validateProductRow(row, index + 2); // +2 karena index mulai 0 dan header di baris 1
+          const result = validateProductRowWithHeaders({
+            nameRaw,
+            priceRaw,
+            descRaw,
+            stockRaw,
+            imageRaw,
+            statusRaw,
+            rowIndex
+          });
+
           if (result.valid) {
             validatedRows.push(result.data);
-            hasValidData = true;
           } else {
             errors.push(...result.errors);
           }
+
+          rowIndex++;
         });
 
         resolve({
           success: true,
           data: validatedRows,
           errors,
-          totalRows: rows.length,
+          totalRows: jsonData.length,
           validCount: validatedRows.length,
           fileName: file.name,
         });
@@ -223,14 +302,15 @@ export async function parseExcelFile(file) {
 }
 
 /**
- * Import produk ke database (dengan duplikasi per store)
+ * Import produk ke database (dengan duplikasi per store & pengecekan duplikat)
  * @param {Array} products - Array produk hasil validasi
  * @param {Array} storeIds - Array store_id tujuan (untuk superadmin)
  * @param {string} singleStoreId - store_id tunggal (untuk store admin)
  * @param {Function} onProgress - Callback untuk update progress
- * @returns {Promise} { success: boolean, results: Array, errors: Array }
+ * @param {boolean} skipDuplicates - Jika true, lewati pengecekan duplikat
+ * @returns {Promise} { success: boolean, results: Array, errors: Array, duplicates: Array }
  */
-export async function importProducts(products, storeIds = [], singleStoreId = null, onProgress = null) {
+export async function importProducts(products, storeIds = [], singleStoreId = null, onProgress = null, skipDuplicates = false) {
   // Tentukan store tujuan
   let targetStores = [];
   if (singleStoreId) {
@@ -251,16 +331,41 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
   let processed = 0;
   const results = [];
   const errors = [];
+  const duplicates = [];
 
-  // Proses per store (untuk batch)
+  // Proses per store
   for (const storeId of targetStores) {
+    // Ambil semua nama produk yang sudah ada di store ini (untuk batch check)
+    const productNames = validProducts.map(p => p.name);
+    const existingProducts = await supabase
+      .from('products')
+      .select('name')
+      .eq('store_id', storeId)
+      .in('name', productNames);
+    
+    const existingNames = new Set(existingProducts.data?.map(p => p.name.toLowerCase()) || []);
+
     for (const product of validProducts) {
       try {
+        // ✅ CEK DUPLIKAT (jika tidak skip)
+        if (!skipDuplicates) {
+          if (existingNames.has(product.name.toLowerCase())) {
+            duplicates.push({
+              product_name: product.name,
+              store_id: storeId,
+              message: 'Produk sudah ada di store ini'
+            });
+            processed++;
+            if (onProgress) onProgress(processed, totalRecords);
+            continue;
+          }
+        }
+
         // Sanitasi ulang (jaga-jaga)
         const insertData = {
           store_id: storeId,
           name: sanitizeString(product.name),
-          price: product.price,
+          price: product.price || 0,
           description: sanitizeString(product.description || ''),
           stock: product.stock || 0,
           image_url: product.image_url || '',
@@ -272,12 +377,16 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           updated_at: new Date().toISOString()
         };
 
+        // Log untuk debugging
+        console.log(`📦 Inserting product: ${insertData.name} for store ${storeId}, active: ${insertData.is_active}`);
+
         const { data, error } = await supabase
           .from('products')
           .insert([insertData])
           .select();
 
         if (error) {
+          console.error('❌ Insert error:', error);
           errors.push({
             product_name: product.name,
             store_id: storeId,
@@ -297,6 +406,7 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           onProgress(processed, totalRecords);
         }
       } catch (err) {
+        console.error('❌ Error processing product:', err);
         errors.push({
           product_name: product.name,
           store_id: storeId,
@@ -314,8 +424,43 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
     success: true,
     results,
     errors,
+    duplicates,
     total: totalRecords,
     successCount: results.length,
-    errorCount: errors.length
+    errorCount: errors.length,
+    duplicateCount: duplicates.length
   };
+}
+
+/**
+ * Generate template Excel untuk download
+ * @returns {Array} Array of objects untuk template
+ */
+export function generateTemplateData() {
+  return [
+    {
+      'Nama Produk': 'Contoh Produk 1',
+      'Harga': 50000,
+      'Deskripsi': 'Deskripsi produk contoh 1',
+      'Stok': 10,
+      'URL Gambar': 'https://example.com/image1.jpg',
+      'Status': 'aktif'
+    },
+    {
+      'Nama Produk': 'Contoh Produk 2',
+      'Harga': 75000,
+      'Deskripsi': 'Deskripsi produk contoh 2',
+      'Stok': 5,
+      'URL Gambar': '',
+      'Status': 'aktif'
+    },
+    {
+      'Nama Produk': 'Contoh Produk Nonaktif',
+      'Harga': 100000,
+      'Deskripsi': 'Produk ini nonaktif',
+      'Stok': 0,
+      'URL Gambar': '',
+      'Status': 'nonaktif'
+    }
+  ];
 }
