@@ -13,10 +13,11 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus, X
+  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus, X, FileSpreadsheet
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
+import ImportProductsModal from '../components/ImportProductsModal';
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
@@ -27,6 +28,7 @@ export default function AdminDashboard() {
   const [storeId, setStoreId] = useState(null)
   const [selectedStoreId, setSelectedStoreId] = useState(null)
   const [showStoreModal, setShowStoreModal] = useState(false)
+const [showImportModal, setShowImportModal] = useState(false);
 
   // -------------------- PREVIEW DATA (3 item terbaru) --------------------
   const [recentProducts, setRecentProducts] = useState([])
@@ -466,8 +468,22 @@ rawOrders.forEach(order => {
       <div className="bg-black min-h-screen text-white p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
-            <div><h1 className="text-3xl font-display">Super Admin Dashboard</h1><p className="text-gray-400">Selamat datang, Super Admin</p></div>
-                <button
+  <div>
+    <h1 className="text-3xl font-display">Super Admin Dashboard</h1>
+    <p className="text-gray-400">Selamat datang, Super Admin</p>
+  </div>
+  <div className="flex gap-3">
+    {/* ✅ TOMBOL IMPORT PRODUK - UNTUK SUPER ADMIN */}
+    <button
+      onClick={() => setShowImportModal(true)}
+      className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-full text-sm flex items-center gap-2 transition"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+      </svg>
+      Import Produk
+    </button>
+    <button
       onClick={() => {
         setGeneratedPassword(generatePassword());
         setNewAdminForm(prev => ({ ...prev, password: generatePassword() }));
@@ -478,7 +494,8 @@ rawOrders.forEach(order => {
       <UserPlus size={16} /> Buat Store Admin
     </button>
     <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
-          </div>
+  </div>
+</div>
 
           {/* Pilih Store */}
           <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10 mb-6">
@@ -734,6 +751,18 @@ rawOrders.forEach(order => {
   </div>
 )}
 
+
+      {/* ===== MODAL IMPORT PRODUK ===== */}
+      <ImportProductsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        userRole={userRole}
+        stores={storesList}
+        selectedStoreId={selectedStoreId}
+        onImportComplete={() => {
+          fetchDashboardData(selectedStoreId);
+        }}
+      />
       </div>
     )
   }
@@ -772,6 +801,12 @@ rawOrders.forEach(order => {
           </button>
           <button onClick={() => navigate('/admin/promotions')} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition">
             <Gift size={16} /> Promosi
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-full text-sm transition"
+          >
+            <FileSpreadsheet size={16} /> Import Produk
           </button>
         </div>
 
@@ -938,6 +973,17 @@ rawOrders.forEach(order => {
           </div>
         </div>
       )}
+
+                  <ImportProductsModal
+              isOpen={showImportModal}
+              onClose={() => setShowImportModal(false)}
+              userRole={userRole}
+              storeId={store?.id}
+              onSuccess={() => {
+                // Refresh data setelah import
+                fetchDashboardData(store?.id || selectedStoreId);
+              }}
+            />
     </div>
   )
 }
