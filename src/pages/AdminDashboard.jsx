@@ -978,7 +978,7 @@ rawOrders.forEach(order => {
               isOpen={showImportModal}
               onClose={() => setShowImportModal(false)}
               userRole={userRole}
-              storeId={store?.id}
+              selectedStoreId={store?.id}
               onSuccess={() => {
                 // Refresh data setelah import
                 fetchDashboardData(store?.id || selectedStoreId);

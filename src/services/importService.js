@@ -12,28 +12,19 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Sanitasi string: hapus HTML/script tags & karakter berbahaya
- * @param {string} str - String yang akan disanitasi
- * @returns {string} String yang sudah aman
  */
 export function sanitizeString(str) {
   if (!str) return '';
-  // Konversi ke string
   let cleaned = String(str);
-  // Hapus HTML tags
   cleaned = cleaned.replace(/<[^>]*>/g, '');
-  // Hapus script pattern
   cleaned = cleaned.replace(/javascript:/gi, '');
-  // Hapus karakter kontrol
   cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, '');
-  // Trim
   cleaned = cleaned.trim();
   return cleaned;
 }
 
 /**
  * Validasi tipe data harga (harus angka integer positif)
- * @param {any} value - Nilai yang divalidasi
- * @returns {Object} { valid: boolean, value: number | null, error: string }
  */
 export function validatePrice(value) {
   const num = Number(value);
@@ -51,13 +42,10 @@ export function validatePrice(value) {
 
 /**
  * Validasi tipe data stok (harus angka integer >= 0)
- * @param {any} value - Nilai yang divalidasi
- * @returns {Object} { valid: boolean, value: number | null, error: string }
  */
 export function validateStock(value) {
   const num = Number(value);
   if (isNaN(num) || !isFinite(num)) {
-    // Jika kosong, default 0
     if (value === '' || value === null || value === undefined) {
       return { valid: true, value: 0, error: null };
     }
@@ -74,53 +62,201 @@ export function validateStock(value) {
 
 /**
  * Validasi status (aktif/tidak) → boolean
- * @param {any} value - Nilai yang divalidasi
- * @returns {Object} { valid: boolean, value: boolean | null, error: string }
  */
 export function validateStatus(value) {
   if (!value) return { valid: true, value: true, error: null };
   const str = String(value).toLowerCase().trim();
   
-  // ✅ Status AKTIF
   if (str === 'aktif' || str === 'active' || str === 'true' || str === '1' || str === 'yes' || str === 'y') {
     return { valid: true, value: true, error: null };
   }
-  
-  // ✅ Status TIDAK AKTIF
   if (str === 'nonaktif' || str === 'tidak aktif' || str === 'inactive' || str === 'false' || str === '0' || str === 'no' || str === 'n') {
     return { valid: true, value: false, error: null };
   }
-  
-  // ❌ Jika tidak dikenali, default true dan beri peringatan
   return { valid: true, value: true, error: null };
 }
 
 /**
- * Cek apakah produk sudah ada di store tertentu
- * @param {string} storeId - ID store
- * @param {string} productName - Nama produk (case insensitive)
- * @returns {Promise<boolean>} true jika sudah ada
+ * Validasi barcode (harus angka minimal 8 digit)
  */
-export async function checkProductExists(storeId, productName) {
+export function validateBarcode(value) {
+  if (!value || String(value).trim() === '') {
+    return { valid: true, value: null, error: null }; // Barcode opsional
+  }
+  const str = String(value).trim();
+  if (!/^\d+$/.test(str)) {
+    return { valid: false, value: null, error: 'Barcode harus berupa angka' };
+  }
+  if (str.length < 8) {
+    return { valid: false, value: null, error: 'Barcode minimal 8 digit' };
+  }
+  return { valid: true, value: str, error: null };
+}
+
+/**
+ * Validasi product code (jika diisi)
+ */
+export function validateProductCode(value) {
+  if (!value || String(value).trim() === '') {
+    return { valid: true, value: null, error: null }; // Product code opsional (akan auto-generate)
+  }
+  const str = String(value).trim();
+  if (str.length < 3) {
+    return { valid: false, value: null, error: 'Kode Produk minimal 3 karakter' };
+  }
+  if (/\s/.test(str)) {
+    return { valid: false, value: null, error: 'Kode Produk tidak boleh mengandung spasi' };
+  }
+  return { valid: true, value: str, error: null };
+}
+
+/**
+ * Cari kategori berdasarkan nama (case insensitive)
+ */
+export async function findCategoryByName(categoryName) {
+  if (!categoryName) return null;
+  const { data, error } = await supabase
+    .from('master_categories')
+    .select('id, name, initial')
+    .ilike('name', categoryName.trim())
+    .maybeSingle();
+  
+  if (error) {
+    console.error('Error finding category:', error);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Cek apakah product code sudah ada di store
+ */
+export async function checkProductCodeExists(storeId, productCode) {
+  if (!productCode) return false;
   const { data, error } = await supabase
     .from('products')
-    .select('id, name')
+    .select('id, product_code')
     .eq('store_id', storeId)
-    .ilike('name', productName)
+    .eq('product_code', productCode)
     .maybeSingle();
-
+  
   if (error) {
-    console.error('Error checking product:', error);
+    console.error('Error checking product code:', error);
     return false;
   }
   return !!data;
 }
 
 /**
- * Validasi produk dengan header (menggunakan objek, bukan array)
+ * Dapatkan store initial (dengan fallback)
  */
-export function validateProductRowWithHeaders({ nameRaw, priceRaw, descRaw, stockRaw, imageRaw, statusRaw, rowIndex }) {
+export async function getStoreInitial(storeId) {
+  if (!storeId) {
+    console.warn('⚠️ storeId is null, using fallback STR');
+    return 'STR';
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('stores')
+      .select('name, initial')
+      .eq('id', storeId)
+      .single();
+
+    if (error) {
+      console.error('❌ Error fetching store initial:', error);
+      return 'STR';
+    }
+
+    // Jika initial ada dan tidak kosong
+    if (data?.initial && data.initial.trim() !== '') {
+      const initial = data.initial.toUpperCase().trim();
+      console.log(`✅ Store initial from database: ${initial}`);
+      return initial;
+    }
+
+    // Fallback: 3 huruf pertama nama store
+    const name = data?.name || 'Store';
+    const fallback = name.substring(0, 3).toUpperCase();
+    console.log(`⚠️ Store initial not set, using fallback from name: ${fallback}`);
+    
+    // Opsional: update database dengan fallback
+    if (data?.id) {
+      await supabase
+        .from('stores')
+        .update({ initial: fallback })
+        .eq('id', data.id);
+      console.log(`✅ Updated store initial to: ${fallback}`);
+    }
+    
+    return fallback;
+
+  } catch (err) {
+    console.error('❌ Unexpected error in getStoreInitial:', err);
+    return 'STR';
+  }
+}
+
+/**
+ * Generate product code auto
+ */
+export async function generateProductCode(storeId, categoryId = null) {
+  // 1. Dapatkan initial store
+  const storeInitial = await getStoreInitial(storeId);
+  console.log(`🔑 Store initial: ${storeInitial}`);
+
+  // 2. Dapatkan initial kategori
+  let categoryInitial = 'GEN';
+  if (categoryId) {
+    try {
+      const { data, error } = await supabase
+        .from('master_categories')
+        .select('name, initial')
+        .eq('id', categoryId)
+        .single();
+
+      if (!error && data) {
+        if (data.initial && data.initial.trim() !== '') {
+          categoryInitial = data.initial.toUpperCase().trim();
+        } else {
+          categoryInitial = data.name.substring(0, 3).toUpperCase();
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching category initial:', err);
+    }
+  }
+  console.log(`🔑 Category initial: ${categoryInitial}`);
+
+  // 3. Hitung total produk di store ini
+  const { count, error } = await supabase
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+    .eq('store_id', storeId);
+
+  if (error) {
+    console.error('Error counting products:', error);
+  }
+
+  const nextNumber = (count || 0) + 1;
+  const seq = String(nextNumber).padStart(4, '0');
+  
+  const productCode = `${storeInitial}-${categoryInitial}-${seq}`;
+  console.log(`✅ Generated product code: ${productCode}`);
+  
+  return productCode;
+}
+
+/**
+ * Validasi produk dengan header (lengkap dengan kategori, barcode, product code)
+ */
+export async function validateProductRowWithHeaders({ 
+  nameRaw, priceRaw, descRaw, stockRaw, imageRaw, statusRaw, 
+  categoryRaw, barcodeRaw, productCodeRaw, rowIndex, storeId 
+}) {
   const errors = [];
+  let categoryId = null;
+  let categoryName = null;
 
   // 1. Nama Produk (wajib, sanitasi)
   const name = sanitizeString(nameRaw);
@@ -148,14 +284,85 @@ export function validateProductRowWithHeaders({ nameRaw, priceRaw, descRaw, stoc
 
   // 6. Status
   const statusResult = validateStatus(statusRaw);
-  if (!statusResult.valid) {
-    errors.push(`Baris ${rowIndex}: ${statusResult.error}`);
+
+  // 7. Kategori (cari di master_categories)
+  if (categoryRaw) {
+    const categoryNameClean = sanitizeString(categoryRaw);
+    if (categoryNameClean) {
+      const category = await findCategoryByName(categoryNameClean);
+      if (category) {
+        categoryId = category.id;
+        categoryName = category.name;
+      } else {
+        errors.push(`Baris ${rowIndex}: Kategori "${categoryNameClean}" tidak ditemukan di database`);
+      }
+    }
   }
 
-  if (errors.length > 0) {
-    return { valid: false, data: null, errors };
+  // 8. Barcode (opsional)
+  const barcodeResult = validateBarcode(barcodeRaw);
+  if (!barcodeResult.valid) {
+    errors.push(`Baris ${rowIndex}: ${barcodeResult.error}`);
   }
 
+  // 9. Product Code (opsional)
+  let productCode = null;
+const codeResult = validateProductCode(productCodeRaw);
+
+if (!codeResult.valid) {
+  errors.push(`Baris ${rowIndex}: ${codeResult.error}`);
+} else if (codeResult.value) {
+  // Jika product code diisi manual
+  if (storeId) {
+    const exists = await checkProductCodeExists(storeId, codeResult.value);
+    if (exists) {
+      errors.push(`Baris ${rowIndex}: Kode Produk "${codeResult.value}" sudah digunakan di store ini`);
+    } else {
+      productCode = codeResult.value;
+    }
+  } else {
+    // StoreId null (super admin multi-store), simpan dulu
+    productCode = codeResult.value;
+  }
+}
+
+// 🔥 Jika product code KOSONG atau masih placeholder
+if (!productCode) {
+  if (storeId) {
+    // ✅ STORE ADMIN: LANGSUNG GENERATE
+    console.log(`🔍 Generating product code for store admin: ${storeId}`);
+    productCode = await generateProductCode(storeId, categoryId);
+    
+    // Cek duplikat hasil generate
+    let isUnique = false;
+    let attempts = 0;
+    let generatedCode = productCode;
+    
+    while (!isUnique && attempts < 10) {
+      const exists = await checkProductCodeExists(storeId, generatedCode);
+      if (!exists) {
+        isUnique = true;
+      } else {
+        attempts++;
+        const parts = generatedCode.split('-');
+        const lastPart = parts[parts.length - 1];
+        const num = parseInt(lastPart, 10);
+        const newNum = num + 1;
+        parts[parts.length - 1] = String(newNum).padStart(4, '0');
+        generatedCode = parts.join('-');
+      }
+    }
+    productCode = generatedCode;
+    console.log(`✅ Generated product code: ${productCode}`);
+    
+  } else {
+    // SUPER ADMIN MULTI-STORE: BUAT PLACEHOLDER
+    productCode = `AUTO-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    console.log(`🔍 Created placeholder for super admin: ${productCode}`);
+  }
+}
+
+  // Data valid
   return {
     valid: true,
     data: {
@@ -165,6 +372,10 @@ export function validateProductRowWithHeaders({ nameRaw, priceRaw, descRaw, stoc
       stock: stockResult.value,
       image_url: imageUrl,
       is_active: statusResult.value !== undefined ? statusResult.value : true,
+      category_id: categoryId,
+      category_name: categoryName,
+      barcode: barcodeResult.value,
+      product_code: productCode,
       has_discount: false,
       discount_percentage: 0,
       is_featured: false,
@@ -175,22 +386,18 @@ export function validateProductRowWithHeaders({ nameRaw, priceRaw, descRaw, stoc
 
 /**
  * Parse file Excel dan validasi semua baris
- * @param {File} file - File yang diupload
- * @returns {Promise} { success: boolean, data: Array, errors: Array, fileName: string }
  */
-export async function parseExcelFile(file) {
+export async function parseExcelFile(file, storeId = null) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        // ✅ PARSE DENGAN HEADER (MENCARI NAMA KOLOM)
         const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 
-        // Jika tidak ada data
         if (!jsonData || jsonData.length === 0) {
           resolve({
             success: false,
@@ -203,14 +410,13 @@ export async function parseExcelFile(file) {
           return;
         }
 
-        // Cari nama kolom yang sesuai (case insensitive)
+        // Cari nama kolom (case insensitive)
         const headers = Object.keys(jsonData[0] || {});
         const findColumn = (possibleNames) => {
           for (const name of possibleNames) {
             const found = headers.find(h => h.toLowerCase().trim() === name.toLowerCase().trim());
             if (found) return found;
           }
-          // Coba cari dengan includes
           for (const name of possibleNames) {
             const found = headers.find(h => h.toLowerCase().trim().includes(name.toLowerCase().trim()));
             if (found) return found;
@@ -224,15 +430,17 @@ export async function parseExcelFile(file) {
         const stockCol = findColumn(['Stok', 'stok', 'stock']);
         const imageCol = findColumn(['URL Gambar', 'url gambar', 'image_url', 'image']);
         const statusCol = findColumn(['Status', 'status', 'is_active', 'active']);
+        const categoryCol = findColumn(['Kategori', 'kategori', 'category']);
+        const barcodeCol = findColumn(['Barcode', 'barcode']);
+        const productCodeCol = findColumn(['Kode Produk', 'kode produk', 'product_code', 'product code']);
 
-        console.log('📊 Column mapping found:', { nameCol, priceCol, descCol, stockCol, imageCol, statusCol });
+        console.log('📊 Column mapping:', { nameCol, priceCol, descCol, stockCol, imageCol, statusCol, categoryCol, barcodeCol, productCodeCol });
 
-        // Validasi apakah kolom wajib ada
         if (!nameCol) {
           resolve({
             success: false,
             data: [],
-            errors: ['Kolom "Nama Produk" tidak ditemukan di file Excel. Pastikan header sesuai dengan template.'],
+            errors: ['Kolom "Nama Produk" tidak ditemukan. Pastikan header sesuai dengan template.'],
             totalRows: 0,
             validCount: 0,
             fileName: file.name,
@@ -240,35 +448,39 @@ export async function parseExcelFile(file) {
           return;
         }
 
-        // Validasi setiap baris
         const validatedRows = [];
         const errors = [];
-        let rowIndex = 2; // Baris pertama = header
+        let rowIndex = 2;
 
-        jsonData.forEach((row) => {
-          // Ambil nilai dari kolom yang ditemukan
+        for (const row of jsonData) {
           const nameRaw = nameCol ? row[nameCol] : '';
           const priceRaw = priceCol ? row[priceCol] : 0;
           const descRaw = descCol ? row[descCol] : '';
           const stockRaw = stockCol ? row[stockCol] : 0;
           const imageRaw = imageCol ? row[imageCol] : '';
           const statusRaw = statusCol ? row[statusCol] : 'aktif';
+          const categoryRaw = categoryCol ? row[categoryCol] : '';
+          const barcodeRaw = barcodeCol ? row[barcodeCol] : '';
+          const productCodeRaw = productCodeCol ? row[productCodeCol] : '';
 
-          // Lewati baris kosong (semua kolom kosong)
           const isEmpty = !nameRaw && !priceRaw && !descRaw && !stockRaw;
           if (isEmpty) {
             rowIndex++;
-            return;
+            continue;
           }
 
-          const result = validateProductRowWithHeaders({
+          const result = await validateProductRowWithHeaders({
             nameRaw,
             priceRaw,
             descRaw,
             stockRaw,
             imageRaw,
             statusRaw,
-            rowIndex
+            categoryRaw,
+            barcodeRaw,
+            productCodeRaw,
+            rowIndex,
+            storeId
           });
 
           if (result.valid) {
@@ -278,7 +490,7 @@ export async function parseExcelFile(file) {
           }
 
           rowIndex++;
-        });
+        }
 
         resolve({
           success: true,
@@ -302,16 +514,27 @@ export async function parseExcelFile(file) {
 }
 
 /**
- * Import produk ke database (dengan duplikasi per store & pengecekan duplikat)
- * @param {Array} products - Array produk hasil validasi
- * @param {Array} storeIds - Array store_id tujuan (untuk superadmin)
- * @param {string} singleStoreId - store_id tunggal (untuk store admin)
- * @param {Function} onProgress - Callback untuk update progress
- * @param {boolean} skipDuplicates - Jika true, lewati pengecekan duplikat
- * @returns {Promise} { success: boolean, results: Array, errors: Array, duplicates: Array }
+ * Cek apakah produk sudah ada di store tertentu
+ */
+export async function checkProductExists(storeId, productName) {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, name')
+    .eq('store_id', storeId)
+    .ilike('name', productName)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error checking product:', error);
+    return false;
+  }
+  return !!data;
+}
+
+/**
+ * Import produk ke database (dengan duplikasi per store)
  */
 export async function importProducts(products, storeIds = [], singleStoreId = null, onProgress = null, skipDuplicates = false) {
-  // Tentukan store tujuan
   let targetStores = [];
   if (singleStoreId) {
     targetStores = [singleStoreId];
@@ -321,7 +544,8 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
     throw new Error('Tidak ada store yang dipilih');
   }
 
-  // Filter produk yang valid
+  console.log(`🔍 Importing ${products.length} products to ${targetStores.length} stores`);
+
   const validProducts = products.filter(p => p && p.name);
   if (validProducts.length === 0) {
     throw new Error('Tidak ada produk valid untuk diimport');
@@ -333,27 +557,31 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
   const errors = [];
   const duplicates = [];
 
-  // Proses per store
   for (const storeId of targetStores) {
-    // Ambil semua nama produk yang sudah ada di store ini (untuk batch check)
+    console.log(`🔍 Processing store: ${storeId}`);
+    
+    // ✅ Ambil semua produk yang sudah ada di store ini (untuk cek duplikat nama)
     const productNames = validProducts.map(p => p.name);
-    const existingProducts = await supabase
+    const { data: existingProducts } = await supabase
       .from('products')
-      .select('name')
+      .select('name, barcode, product_code')
       .eq('store_id', storeId)
       .in('name', productNames);
     
-    const existingNames = new Set(existingProducts.data?.map(p => p.name.toLowerCase()) || []);
+    // Buat Set untuk pengecekan cepat
+    const existingNames = new Set(existingProducts?.map(p => p.name.toLowerCase()) || []);
+    const existingBarcodes = new Set(existingProducts?.map(p => p.barcode).filter(b => b) || []);
+    const existingCodes = new Set(existingProducts?.map(p => p.product_code).filter(c => c) || []);
 
     for (const product of validProducts) {
       try {
-        // ✅ CEK DUPLIKAT (jika tidak skip)
+        // ✅ CEK DUPLIKAT NAMA (case insensitive)
         if (!skipDuplicates) {
           if (existingNames.has(product.name.toLowerCase())) {
             duplicates.push({
               product_name: product.name,
               store_id: storeId,
-              message: 'Produk sudah ada di store ini'
+              message: 'Produk dengan nama yang sama sudah ada di store ini'
             });
             processed++;
             if (onProgress) onProgress(processed, totalRecords);
@@ -361,7 +589,64 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           }
         }
 
-        // Sanitasi ulang (jaga-jaga)
+        // ✅ CEK DUPLIKAT BARCODE (jika diisi)
+        if (product.barcode && existingBarcodes.has(product.barcode)) {
+          duplicates.push({
+            product_name: product.name,
+            store_id: storeId,
+            message: `Barcode "${product.barcode}" sudah digunakan di store ini`
+          });
+          processed++;
+          if (onProgress) onProgress(processed, totalRecords);
+          continue;
+        }
+
+        // ✅ CEK DUPLIKAT PRODUCT CODE
+        let finalProductCode = product.product_code;
+        
+        // Jika product code adalah placeholder, generate ulang
+        if (finalProductCode && finalProductCode.startsWith('AUTO-')) {
+          console.log(`🔄 Regenerating product code for ${product.name} in store ${storeId}`);
+          const categoryId = product.category_id || null;
+          finalProductCode = await generateProductCode(storeId, categoryId);
+          
+          // Cek duplikat hasil generate
+          let isUnique = false;
+          let attempts = 0;
+          while (!isUnique && attempts < 10) {
+            if (!existingCodes.has(finalProductCode)) {
+              isUnique = true;
+            } else {
+              attempts++;
+              const parts = finalProductCode.split('-');
+              const lastPart = parts[parts.length - 1];
+              const num = parseInt(lastPart, 10);
+              const newNum = num + 1;
+              parts[parts.length - 1] = String(newNum).padStart(4, '0');
+              finalProductCode = parts.join('-');
+            }
+          }
+          console.log(`✅ Regenerated product code: ${finalProductCode}`);
+          
+        } else if (finalProductCode) {
+          // Cek duplikat product code yang diisi manual
+          if (existingCodes.has(finalProductCode)) {
+            duplicates.push({
+              product_name: product.name,
+              store_id: storeId,
+              message: `Kode Produk "${finalProductCode}" sudah digunakan di store ini`
+            });
+            processed++;
+            if (onProgress) onProgress(processed, totalRecords);
+            continue;
+          }
+        } else {
+          // Jika product code kosong, generate
+          const categoryId = product.category_id || null;
+          finalProductCode = await generateProductCode(storeId, categoryId);
+        }
+
+        // ✅ INSERT DATA
         const insertData = {
           store_id: storeId,
           name: sanitizeString(product.name),
@@ -370,6 +655,9 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           stock: product.stock || 0,
           image_url: product.image_url || '',
           is_active: product.is_active !== undefined ? product.is_active : true,
+          category_id: product.category_id || null,
+          barcode: product.barcode || null,
+          product_code: finalProductCode,
           has_discount: false,
           discount_percentage: 0,
           is_featured: false,
@@ -377,8 +665,7 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           updated_at: new Date().toISOString()
         };
 
-        // Log untuk debugging
-        console.log(`📦 Inserting product: ${insertData.name} for store ${storeId}, active: ${insertData.is_active}`);
+        console.log(`📦 Inserting: ${insertData.name} | code: ${insertData.product_code} | store: ${storeId}`);
 
         const { data, error } = await supabase
           .from('products')
@@ -397,6 +684,7 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
             product_name: product.name,
             store_id: storeId,
             product_id: data[0]?.id,
+            product_code: data[0]?.product_code,
             success: true
           });
         }
@@ -434,33 +722,41 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
 
 /**
  * Generate template Excel untuk download
- * @returns {Array} Array of objects untuk template
  */
 export function generateTemplateData() {
   return [
     {
-      'Nama Produk': 'Contoh Produk 1',
-      'Harga': 50000,
-      'Deskripsi': 'Deskripsi produk contoh 1',
+      'Nama Produk': 'Kopi Arabica',
+      'Harga': 45000,
+      'Deskripsi': 'Kopi arabica premium',
       'Stok': 10,
-      'URL Gambar': 'https://example.com/image1.jpg',
-      'Status': 'aktif'
+      'URL Gambar': 'https://example.com/kopi-arabica.jpg',
+      'Status': 'aktif',
+      'Kategori': 'Kopi',
+      'Barcode': '8991234567890',
+      'Kode Produk': 'PWM-KOP-0001'
     },
     {
-      'Nama Produk': 'Contoh Produk 2',
-      'Harga': 75000,
-      'Deskripsi': 'Deskripsi produk contoh 2',
+      'Nama Produk': 'Kopi Robusta',
+      'Harga': 35000,
+      'Deskripsi': 'Kopi robusta pilihan',
       'Stok': 5,
       'URL Gambar': '',
-      'Status': 'aktif'
+      'Status': 'NONAKTIF',
+      'Kategori': 'Kopi',
+      'Barcode': '8991234567891',
+      'Kode Produk': ''
     },
     {
-      'Nama Produk': 'Contoh Produk Nonaktif',
-      'Harga': 100000,
-      'Deskripsi': 'Produk ini nonaktif',
-      'Stok': 0,
+      'Nama Produk': 'Teh Hitam',
+      'Harga': 25000,
+      'Deskripsi': 'Teh hitam premium',
+      'Stok': 8,
       'URL Gambar': '',
-      'Status': 'nonaktif'
+      'Status': 'nonaktif',
+      'Kategori': 'Teh',
+      'Barcode': '',
+      'Kode Produk': ''
     }
   ];
 }

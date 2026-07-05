@@ -3,456 +3,533 @@
 // Modal untuk import produk dari Excel
 // ============================================================
 
-import { useState, useEffect, useRef } from 'react';
-import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, Loader } from 'lucide-react';
-import { parseExcelFile, importProducts } from '../services/importService';
-import { downloadTemplate } from '../utils/excelTemplate';
+import { useState, useRef } from 'react';
+import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, Trash2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { parseExcelFile, importProducts, generateTemplateData } from '../services/importService';
 import { supabase } from '../lib/supabase';
 
-export default function ImportProductsModal({ 
-  isOpen, 
-  onClose, 
-  userRole, 
-  storeId, // store_id untuk store admin
-  onSuccess 
-}) {
-  const [step, setStep] = useState('upload'); // 'upload' | 'preview' | 'importing' | 'done'
+export default function ImportProductsModal({ isOpen, onClose, userRole, stores, selectedStoreId, onImportComplete }) {
   const [file, setFile] = useState(null);
+  const [fileError, setFileError] = useState(null);
   const [previewData, setPreviewData] = useState([]);
-  const [errors, setErrors] = useState([]);
-  const [stores, setStores] = useState([]);
-  const [selectedStoreIds, setSelectedStoreIds] = useState([]);
-  const [importResult, setImportResult] = useState(null);
+  const [validationErrors, setValidationErrors] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [isImporting, setIsImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [importResult, setImportResult] = useState(null);
+  const [step, setStep] = useState('upload'); // 'upload' | 'preview' | 'result'
   const fileInputRef = useRef(null);
-  
-  // Cek role: super_admin atau store_admin
+
+  // State untuk super admin (pilih store)
+  const [selectedStoreIds, setSelectedStoreIds] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // State untuk store admin
   const isSuperAdmin = userRole === 'super_admin';
-  const isStoreAdmin = userRole === 'store_admin';
+  const isStoreAdmin = userRole === 'store_admin' || userRole === 'store_admin';
 
-  // Load daftar store untuk superadmin
-  useEffect(() => {
-    if (isSuperAdmin && isOpen) {
-      fetchStores();
+  // Reset state saat modal ditutup
+  const handleClose = () => {
+    setFile(null);
+    setFileError(null);
+    setPreviewData([]);
+    setValidationErrors([]);
+    setImportResult(null);
+    setStep('upload');
+    setProgress(0);
+    setIsLoading(false);
+    setIsImporting(false);
+    setSelectedStoreIds([]);
+    setSelectAll(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
-  }, [isSuperAdmin, isOpen]);
-
-  // Reset state saat modal tutup
-  useEffect(() => {
-    if (!isOpen) {
-      setStep('upload');
-      setFile(null);
-      setPreviewData([]);
-      setErrors([]);
-      setSelectedStoreIds([]);
-      setImportResult(null);
-      setProgress({ current: 0, total: 0 });
-    }
-  }, [isOpen]);
-
-  const fetchStores = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('stores')
-        .select('id, name')
-        .order('name');
-      if (error) throw error;
-      setStores(data || []);
-      // Default pilih semua store
-      setSelectedStoreIds(data.map(s => s.id));
-    } catch (err) {
-      console.error('Error fetching stores:', err);
-      alert('Gagal memuat daftar store');
-    }
+    onClose();
   };
 
-  const handleFileChange = (e) => {
+  // Handle file upload
+  const handleFileUpload = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Validasi ukuran file (max 5MB)
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      alert('Ukuran file maksimal 5MB');
-      e.target.value = '';
+    // Validasi ekstensi
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const ext = '.' + selectedFile.name.split('.').pop().toLowerCase();
+    if (!validExtensions.includes(ext)) {
+      setFileError('File harus berformat .xlsx, .xls, atau .csv');
+      setFile(null);
       return;
     }
 
-    // Validasi ekstensi
-    const validExtensions = ['.xlsx', '.xls', '.csv'];
-    const ext = selectedFile.name.toLowerCase().slice(selectedFile.name.lastIndexOf('.'));
-    if (!validExtensions.includes(ext)) {
-      alert('Format file harus .xlsx, .xls, atau .csv');
-      e.target.value = '';
+    // Validasi MIME type
+    const validMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    if (!validMimeTypes.includes(selectedFile.type) && !selectedFile.name.endsWith('.csv')) {
+      setFileError('Tipe file tidak valid');
+      setFile(null);
+      return;
+    }
+
+    // Validasi ukuran file (max 5MB)
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      setFileError('Ukuran file maksimal 5MB');
+      setFile(null);
       return;
     }
 
     setFile(selectedFile);
-    handleParseFile(selectedFile);
+    setFileError(null);
+    await processFile(selectedFile);
   };
 
-  const handleParseFile = async (fileToParse) => {
-    setIsLoading(true);
-    setErrors([]);
-    setPreviewData([]);
+ // Proses file (parsing & validasi)
+const processFile = async (selectedFile) => {
+  setIsLoading(true);
+  setValidationErrors([]);
+  setPreviewData([]);
 
-    try {
-      const result = await parseExcelFile(fileToParse);
-      if (result.success) {
-        setPreviewData(result.data);
-        setErrors(result.errors);
-        setStep('preview');
-      } else {
-        alert('Gagal parsing file: ' + result.error);
-        setStep('upload');
+  try {
+    // ✅ Tentukan storeId dengan benar
+    let storeId = null;
+    
+    // 🔥 STORE ADMIN: PASTIKAN storeId TERKIRIM
+    if (isStoreAdmin && selectedStoreId) {
+      storeId = selectedStoreId;
+      console.log('🔍 Store admin detected, storeId:', storeId);
+    } else if (isSuperAdmin && selectedStoreIds.length === 1) {
+      storeId = selectedStoreIds[0];
+      console.log('🔍 Super admin with 1 store, storeId:', storeId);
+    } else if (isSuperAdmin && selectedStoreIds.length > 1) {
+      storeId = null;
+      console.log('🔍 Super admin with multiple stores, storeId: null');
+    }
+    
+    console.log('🔍 Processing file with storeId:', storeId);
+
+    const result = await parseExcelFile(selectedFile, storeId);
+
+    if (result.success) {
+      if (result.data.length === 0) {
+        setFileError('Tidak ada data yang valid di file ini. Periksa format data.');
+        setFile(null);
+        return;
       }
-    } catch (err) {
-      console.error('Parse error:', err);
-      alert('Gagal parsing file: ' + err.message);
-      setStep('upload');
-    }
 
+      setPreviewData(result.data);
+      setValidationErrors(result.errors || []);
+      setStep('preview');
+    } else {
+      setFileError(result.errors?.[0] || 'Gagal memproses file');
+      setFile(null);
+    }
+  } catch (err) {
+    console.error('Error processing file:', err);
+    setFileError(err.message || 'Gagal memproses file');
+    setFile(null);
+  } finally {
     setIsLoading(false);
-  };
+  }
+};
 
+  // Handle import
   const handleImport = async () => {
-    // Validasi: harus ada produk
-    if (previewData.length === 0) {
-      alert('Tidak ada produk valid untuk diimport');
-      return;
-    }
+    if (previewData.length === 0) return;
 
-    // Validasi superadmin: harus pilih minimal 1 store
+    // Validasi super admin: harus pilih minimal 1 store
     if (isSuperAdmin && selectedStoreIds.length === 0) {
-      alert('Pilih minimal 1 store tujuan');
+      alert('Silakan pilih minimal 1 store untuk import produk');
       return;
     }
 
-    setStep('importing');
-    setProgress({ current: 0, total: previewData.length * (isSuperAdmin ? selectedStoreIds.length : 1) });
+    setIsImporting(true);
+    setProgress(0);
 
     try {
+      const storeIds = isSuperAdmin ? selectedStoreIds : [selectedStoreId];
+      
+      console.log('📤 Importing products:', {
+        productCount: previewData.length,
+        storeCount: storeIds.length,
+        totalRecords: previewData.length * storeIds.length,
+        storeIds
+      });
+
       const result = await importProducts(
         previewData,
-        isSuperAdmin ? selectedStoreIds : [],
-        isStoreAdmin ? storeId : null,
+        storeIds,
+        null,
         (current, total) => {
-          setProgress({ current, total });
-        }
+          const percent = Math.round((current / total) * 100);
+          setProgress(percent);
+        },
+        false // skipDuplicates = false (cek duplikat)
       );
 
-      setImportResult(result);
-      setStep('done');
+      console.log('📥 Import result:', result);
 
-      if (result.successCount > 0 && onSuccess) {
-        onSuccess();
+      setImportResult({
+        success: true,
+        total: result.total,
+        successCount: result.successCount,
+        errorCount: result.errorCount,
+        duplicateCount: result.duplicateCount || 0,
+        errors: result.errors || [],
+        duplicates: result.duplicates || [],
+        results: result.results || []
+      });
+      setStep('result');
+
+      // Refresh data di parent
+      if (onImportComplete) {
+        onImportComplete();
       }
     } catch (err) {
       console.error('Import error:', err);
-      alert('Gagal import: ' + err.message);
-      setStep('preview');
+      alert('Gagal import produk: ' + err.message);
+    } finally {
+      setIsImporting(false);
     }
   };
 
-  const handleDownloadTemplate = () => {
-    if (isSuperAdmin) {
-      // Download dengan sheet store
-      downloadTemplate(stores);
+  // Download template
+  const downloadTemplate = () => {
+    const templateData = generateTemplateData();
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, 'template_import_produk.xlsx');
+  };
+
+  // Toggle select all stores (untuk super admin)
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedStoreIds([]);
     } else {
-      // Download template biasa
-      downloadTemplate();
+      setSelectedStoreIds(stores.map(s => s.id));
     }
+    setSelectAll(!selectAll);
   };
 
+  // Toggle single store
   const toggleStore = (storeId) => {
-    setSelectedStoreIds(prev => 
-      prev.includes(storeId) 
-        ? prev.filter(id => id !== storeId)
-        : [...prev, storeId]
-    );
-  };
-
-  const selectAllStores = () => {
-    setSelectedStoreIds(stores.map(s => s.id));
-  };
-
-  const deselectAllStores = () => {
-    setSelectedStoreIds([]);
+    setSelectedStoreIds(prev => {
+      if (prev.includes(storeId)) {
+        return prev.filter(id => id !== storeId);
+      } else {
+        return [...prev, storeId];
+      }
+    });
   };
 
   if (!isOpen) return null;
 
-  // Render step upload
-  const renderUpload = () => (
-    <div className="space-y-4">
-      <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-yellow-500/50 transition">
-        <Upload className="mx-auto text-gray-400 mb-3" size={40} />
-        <p className="text-gray-400 text-sm mb-2">
-          Upload file Excel (.xlsx, .xls, .csv)
-        </p>
-        <p className="text-gray-500 text-xs">Maksimal 5MB</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="mt-4 bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Memproses...' : 'Pilih File'}
-        </button>
-        {file && (
-          <p className="mt-2 text-xs text-green-400">
-            ✓ {file.name} ({Math.round(file.size / 1024)} KB)
-          </p>
-        )}
-      </div>
-
-      <button
-        onClick={handleDownloadTemplate}
-        className="flex items-center gap-2 text-yellow-500 hover:text-yellow-400 text-sm transition"
-      >
-        <Download size={16} /> Download Template Excel
-      </button>
-
-      <div className="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400">
-        <p>📌 Format template:</p>
-        <ul className="list-disc list-inside mt-1 space-y-0.5">
-          <li><strong>Nama Produk</strong> (wajib) - max 255 karakter</li>
-          <li><strong>Harga (Rp)</strong> (wajib) - angka bulat positif</li>
-          <li><strong>Deskripsi</strong> (opsional)</li>
-          <li><strong>Stok</strong> (opsional) - angka diatas 0, default 0</li>
-          <li><strong>URL Gambar</strong> (opsional)</li>
-          <li><strong>Status (aktif/tidak)</strong> (opsional) - default "aktif"</li>
-        </ul>
-      </div>
-    </div>
-  );
-
-  // Render step preview
-  const renderPreview = () => {
-    const totalRecords = isSuperAdmin 
-      ? previewData.length * selectedStoreIds.length
-      : previewData.length;
+  // Render hasil import
+  if (step === 'result' && importResult) {
+    const { total, successCount, errorCount, duplicateCount, errors, duplicates } = importResult;
+    const isFullySuccess = errorCount === 0 && duplicateCount === 0;
 
     return (
-      <div className="space-y-4">
-        {/* Informasi total */}
-        <div className="bg-gray-800/50 rounded-lg p-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-400">
-              {previewData.length} produk valid
-              {errors.length > 0 && (
-                <span className="text-red-400 ml-2">({errors.length} error)</span>
-              )}
-            </span>
-            {isSuperAdmin && (
-              <span className="text-sm text-yellow-500">
-                × {selectedStoreIds.length} store = {totalRecords} record
-              </span>
-            )}
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-display">Hasil Import Produk</h2>
+            <button onClick={handleClose} className="text-gray-400 hover:text-white">
+              <X size={20} />
+            </button>
           </div>
-        </div>
 
-        {/* Pilihan store (superadmin) */}
-        {isSuperAdmin && stores.length > 0 && (
-          <div className="bg-gray-800/50 rounded-lg p-3">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-gray-300">Pilih Store Tujuan</span>
-              <div className="flex gap-2">
-                <button onClick={selectAllStores} className="text-xs text-yellow-500 hover:underline">
-                  Pilih Semua
-                </button>
-                <button onClick={deselectAllStores} className="text-xs text-gray-400 hover:underline">
-                  Hapus Semua
-                </button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
-              {stores.map(store => (
-                <label key={store.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedStoreIds.includes(store.id)}
-                    onChange={() => toggleStore(store.id)}
-                    className="accent-yellow-500"
-                  />
-                  <span className="text-gray-300">{store.name}</span>
-                </label>
-              ))}
-            </div>
-            {selectedStoreIds.length === 0 && (
-              <p className="text-xs text-red-400 mt-1">⚠️ Pilih minimal 1 store</p>
-            )}
-          </div>
-        )}
-
-        {/* Preview data */}
-        <div className="border border-white/10 rounded-lg overflow-hidden">
-          <div className="overflow-x-auto max-h-60">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-800/50 sticky top-0">
-                <tr>
-                  <th className="p-2 text-left text-gray-400">#</th>
-                  <th className="p-2 text-left text-gray-400">Nama</th>
-                  <th className="p-2 text-left text-gray-400">Harga</th>
-                  <th className="p-2 text-left text-gray-400">Stok</th>
-                  <th className="p-2 text-left text-gray-400">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewData.length === 0 ? (
-                  <tr><td colSpan={5} className="p-4 text-center text-gray-500">Tidak ada data valid</td></tr>
+          <div className="space-y-4">
+            {/* Ringkasan */}
+            <div className={`p-4 rounded-lg ${isFullySuccess ? 'bg-green-500/10 border border-green-500/30' : 'bg-yellow-500/10 border border-yellow-500/30'}`}>
+              <div className="flex items-center gap-3">
+                {isFullySuccess ? (
+                  <CheckCircle size={24} className="text-green-400" />
                 ) : (
-                  previewData.map((product, idx) => (
-                    <tr key={idx} className="border-b border-white/5">
-                      <td className="p-2 text-gray-500">{idx + 1}</td>
-                      <td className="p-2">{product.name}</td>
-                      <td className="p-2 text-yellow-500">Rp {product.price?.toLocaleString()}</td>
-                      <td className="p-2">{product.stock}</td>
-                      <td className="p-2">
-                        {product.is_active ? (
-                          <span className="text-green-400 text-xs">Aktif</span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">Tidak</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  <AlertCircle size={24} className="text-yellow-400" />
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Errors */}
-        {errors.length > 0 && (
-          <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/30">
-            <p className="text-red-400 text-sm font-medium mb-1">⚠️ Error validasi:</p>
-            <ul className="text-xs text-red-300 list-disc list-inside max-h-20 overflow-y-auto">
-              {errors.slice(0, 10).map((err, idx) => (
-                <li key={idx}>{err}</li>
-              ))}
-              {errors.length > 10 && <li>... dan {errors.length - 10} error lainnya</li>}
-            </ul>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={handleImport}
-            disabled={previewData.length === 0 || (isSuperAdmin && selectedStoreIds.length === 0) || isLoading}
-            className="flex-1 bg-yellow-500 text-black py-2 rounded-lg font-semibold hover:bg-yellow-600 transition disabled:opacity-50"
-          >
-            {isLoading ? 'Memproses...' : `Import ${previewData.length} Produk`}
-          </button>
-          <button
-            onClick={() => setStep('upload')}
-            className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
-          >
-            Kembali
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // Render step importing
-  const renderImporting = () => (
-    <div className="py-8 text-center space-y-4">
-      <Loader className="mx-auto animate-spin text-yellow-500" size={48} />
-      <p className="text-gray-400">Sedang mengimport produk...</p>
-      <div className="w-full bg-gray-700 rounded-full h-2 max-w-md mx-auto">
-        <div 
-          className="bg-yellow-500 h-2 rounded-full transition-all"
-          style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-        ></div>
-      </div>
-      <p className="text-xs text-gray-500">
-        {progress.current} dari {progress.total} record
-      </p>
-    </div>
-  );
-
-  // Render step done
-  const renderDone = () => {
-    const result = importResult;
-    if (!result) return null;
-
-    return (
-      <div className="space-y-4">
-        <div className="py-4 text-center">
-          {result.errorCount === 0 ? (
-            <CheckCircle className="mx-auto text-green-400" size={48} />
-          ) : (
-            <AlertCircle className="mx-auto text-yellow-400" size={48} />
-          )}
-          <h3 className="text-lg font-semibold mt-2">
-            {result.errorCount === 0 ? 'Import Berhasil!' : 'Import Selesai (dengan error)'}
-          </h3>
-          <p className="text-gray-400 text-sm">
-            {result.successCount} produk berhasil diimport
-            {result.errorCount > 0 && (
-              <span className="text-red-400 ml-2">{result.errorCount} gagal</span>
-            )}
-          </p>
-          <p className="text-xs text-gray-500">Total {result.total} record</p>
-        </div>
-
-        {result.errors.length > 0 && (
-          <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/30 max-h-40 overflow-y-auto">
-            <p className="text-red-400 text-xs font-medium mb-1">❌ Gagal:</p>
-            {result.errors.map((err, idx) => (
-              <div key={idx} className="text-xs text-red-300 border-b border-red-500/10 py-1">
-                <span className="font-medium">{err.product_name}</span> 
-                <span className="text-gray-400"> → store {err.store_id.slice(0,8)}</span>
-                <span className="text-red-400 ml-2">({err.error})</span>
+                <div>
+                  <p className="font-semibold">
+                    {isFullySuccess ? '✅ Import Berhasil!' : '⚠️ Import Selesai dengan Peringatan'}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Total {total} record • {successCount} sukses • {errorCount} gagal • {duplicateCount} duplikat
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
 
-        <button
-          onClick={onClose}
-          className="w-full bg-yellow-500 text-black py-2 rounded-lg font-semibold hover:bg-yellow-600 transition"
-        >
-          Tutup
-        </button>
+            {/* Detail error */}
+            {errors.length > 0 && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                <h4 className="text-sm font-semibold text-red-400 mb-2">❌ Error ({errors.length})</h4>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {errors.map((err, idx) => (
+                    <p key={idx} className="text-xs text-red-300">
+                      {err.product_name}: {err.error} (store: {err.store_id?.substring(0, 8)})
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Detail duplikat */}
+            {duplicates.length > 0 && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                <h4 className="text-sm font-semibold text-yellow-400 mb-2">⚠️ Duplikat ({duplicates.length})</h4>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {duplicates.map((dup, idx) => (
+                    <p key={idx} className="text-xs text-yellow-300">
+                      {dup.product_name} - {dup.message} (store: {dup.store_id?.substring(0, 8)})
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tombol */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleClose}
+                className="flex-1 bg-yellow-500 text-black py-2 rounded-lg font-semibold hover:bg-yellow-600 transition"
+              >
+                Selesai
+              </button>
+              <button
+                onClick={() => {
+                  setStep('upload');
+                  setFile(null);
+                  setPreviewData([]);
+                  setImportResult(null);
+                  setProgress(0);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
+              >
+                Import Lagi
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
-  };
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-3xl border border-white/10 max-h-[90vh] flex flex-col">
+      <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-4xl border border-white/10 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-xl font-display flex items-center gap-2">
               <FileSpreadsheet size={20} className="text-yellow-500" />
-              Import Produk
+              Import Produk dari Excel
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {isSuperAdmin ? 'Super Admin - Pilih store tujuan' : 'Store Admin - Produk akan masuk ke store ini'}
+            <p className="text-xs text-gray-400 mt-1">
+              {isSuperAdmin ? 'Super Admin: Pilih store tujuan' : 'Store Admin: Import ke store Anda'}
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition">
+          <button onClick={handleClose} className="text-gray-400 hover:text-white">
             <X size={20} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {step === 'upload' && renderUpload()}
-          {step === 'preview' && renderPreview()}
-          {step === 'importing' && renderImporting()}
-          {step === 'done' && renderDone()}
-        </div>
+        {/* Upload Step */}
+        {step === 'upload' && (
+          <div className="flex-1 overflow-y-auto">
+            {/* Tombol Download Template */}
+            <button
+              onClick={downloadTemplate}
+              className="flex items-center gap-2 text-yellow-500 hover:text-yellow-400 text-sm mb-4"
+            >
+              <Download size={16} /> Download Template Excel
+            </button>
+
+            {/* Dropzone */}
+            <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-yellow-500/50 transition">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+                disabled={isLoading}
+              />
+              <label htmlFor="file-upload" className="cursor-pointer block">
+                <Upload size={48} className="mx-auto text-gray-500 mb-3" />
+                <p className="text-gray-300">Klik atau drag file Excel ke sini</p>
+                <p className="text-xs text-gray-500 mt-1">Format: .xlsx, .xls, .csv (Max 5MB)</p>
+              </label>
+            </div>
+
+            {fileError && (
+              <div className="mt-4 p-3 bg-red-500/10 rounded-lg border border-red-500/30">
+                <p className="text-red-400 text-sm">{fileError}</p>
+              </div>
+            )}
+
+            {isLoading && (
+              <div className="mt-4 flex items-center justify-center gap-2 text-gray-400">
+                <Loader2 size={20} className="animate-spin" />
+                <span>Memproses file...</span>
+              </div>
+            )}
+
+            {/* Pilihan Store (Super Admin) */}
+            {isSuperAdmin && stores && stores.length > 0 && (
+              <div className="mt-6 p-4 bg-gray-800/50 rounded-lg">
+                <h3 className="font-semibold text-sm mb-3">Pilih Store Tujuan</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={toggleSelectAll}
+                      className="accent-yellow-500"
+                    />
+                    <span className="text-yellow-500">Pilih Semua</span>
+                  </label>
+                  {stores.map(store => (
+                    <label key={store.id} className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedStoreIds.includes(store.id)}
+                        onChange={() => toggleStore(store.id)}
+                        className="accent-yellow-500"
+                      />
+                      {store.name}
+                    </label>
+                  ))}
+                </div>
+                {selectedStoreIds.length === 0 && (
+                  <p className="text-xs text-yellow-500 mt-2">⚠️ Pilih minimal 1 store</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Preview Step */}
+        {step === 'preview' && (
+          <div className="flex-1 overflow-y-auto">
+            {/* Informasi */}
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <p className="text-sm text-gray-300">
+                  {previewData.length} produk siap diimport
+                  {isSuperAdmin && selectedStoreIds.length > 0 && (
+                    <span className="text-yellow-500 ml-2">
+                      × {selectedStoreIds.length} store = {previewData.length * selectedStoreIds.length} record
+                    </span>
+                  )}
+                </p>
+                {validationErrors.length > 0 && (
+                  <p className="text-xs text-yellow-500 mt-1">
+                    ⚠️ {validationErrors.length} peringatan validasi (akan dilewati)
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setStep('upload');
+                  setFile(null);
+                  setPreviewData([]);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="text-sm text-gray-400 hover:text-white"
+              >
+                ↺ Upload Ulang
+              </button>
+            </div>
+
+            {/* Tabel Preview */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-800/50 border-b border-white/10 sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">Nama Produk</th>
+                    <th className="p-2 text-left">Harga</th>
+                    <th className="p-2 text-left">Stok</th>
+                    <th className="p-2 text-left">Kategori</th>
+                    <th className="p-2 text-left">Barcode</th>
+                    <th className="p-2 text-left">Kode Produk</th>
+                    <th className="p-2 text-left">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewData.map((product, idx) => (
+                    <tr key={idx} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="p-2 font-medium">{product.name}</td>
+                      <td className="p-2">Rp {product.price?.toLocaleString()}</td>
+                      <td className="p-2">{product.stock}</td>
+                      <td className="p-2">{product.category_name || '-'}</td>
+                      <td className="p-2 font-mono text-xs">{product.barcode || '-'}</td>
+                      <td className="p-2 font-mono text-xs text-yellow-500">{product.product_code || '(auto)'}</td>
+                      <td className="p-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${product.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                          {product.is_active ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Tombol Aksi */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleImport}
+                disabled={isImporting || (isSuperAdmin && selectedStoreIds.length === 0)}
+                className={`flex-1 py-2 rounded-lg font-semibold transition flex items-center justify-center gap-2 ${
+                  isImporting || (isSuperAdmin && selectedStoreIds.length === 0)
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'bg-yellow-500 text-black hover:bg-yellow-600'
+                }`}
+              >
+                {isImporting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Importing... {progress}%
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} />
+                    Import {previewData.length} Produk
+                    {isSuperAdmin && selectedStoreIds.length > 0 && ` ke ${selectedStoreIds.length} store`}
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => setStep('upload')}
+                className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition"
+              >
+                Batal
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            {isImporting && (
+              <div className="mt-3">
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1 text-center">{progress}%</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
