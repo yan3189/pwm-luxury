@@ -693,6 +693,7 @@ const handleAdminPopup = async () => {
                 <div className="bg-gray-800/30 rounded-lg p-3 space-y-2">
                   <div><span className="text-gray-400">Nama:</span> {customerName}</div>
                   <div><span className="text-gray-400">Telepon:</span> {customerPhone}</div>
+                  <div><span className="text-gray-400">Nomor HP Penerima:</span> {order.shipping_phone || order.guest_phone || '-'}</div>
                 </div>
 
                 <h2 className="font-semibold flex items-center gap-2 mt-4 mb-2"><MapPin size={16} /> Alamat Pengiriman</h2>

@@ -562,6 +562,7 @@ export default function TrackOrderPage() {
                   <div className="bg-gray-800/50 rounded-lg p-3">
                     <p className="text-sm">Nama: {order.guest_name || '-'}</p>
                     <p className="text-sm">No. HP: {order.guest_phone || '-'}</p>
+                    <p className="text-sm">No. HP Penerima: {order.shipping_phone || order.guest_phone || '-'}</p>
                   </div>
                 </div>
               </div>

@@ -106,6 +106,7 @@ export async function createOrder(orderData, cartItems) {
       shipping_address: orderData.shipping_address,
       shipping_latitude: orderData.shipping_latitude,
       shipping_longitude: orderData.shipping_longitude,
+      shipping_phone: orderData.shipping_phone || null,
       address_id: orderData.address_id || null,
       shipping_cost: orderData.shipping_cost || 0,
       total_amount: orderData.total_amount || 0,

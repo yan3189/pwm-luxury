@@ -114,7 +114,8 @@ export default function CourierDashboard() {
         voucher_discount,
         shipping_address, 
         shipping_latitude, 
-        shipping_longitude, 
+        shipping_longitude,
+        shipping_phone, 
         guest_name, 
         guest_phone, 
         notes, 
@@ -603,11 +604,25 @@ export default function CourierDashboard() {
                             </div>
                           </div>
                           
-                          {/* 2. ALAMAT PENGIRIMAN */}
-                          <div className="bg-gray-800/50 rounded-lg p-3">
-                            <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman:</h4>
-                            <p className="text-xs">{order?.shipping_address || '-'}</p>
-                          </div>
+                          {/* 2. ALAMAT PENGIRIMAN + NOMOR HP */}
+<div className="bg-gray-800/50 rounded-lg p-3">
+  <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman</h4>
+  <p className="text-xs">{order?.shipping_address || '-'}</p>
+  <div className="mt-2 pt-2 border-t border-white/10">
+    <h4 className="text-xs font-semibold text-gray-400 mb-1">📞 Nomor HP Penerima</h4>
+    <p className="text-xs">
+      {order?.shipping_phone || order?.guest_phone || '-'}
+      {order?.shipping_phone && (
+        <a
+          href={`tel:${order.shipping_phone.replace(/\s/g, '')}`}
+          className="ml-2 text-yellow-500 hover:text-yellow-400 text-xs underline"
+        >
+          📞 Hubungi
+        </a>
+      )}
+    </p>
+  </div>
+</div>
                           
                           {/* 3. INFO PEMESAN + TOMBOL WA */}
                           <div className="bg-gray-800/50 rounded-lg p-3">
@@ -639,6 +654,16 @@ export default function CourierDashboard() {
                             >
                               <Navigation size={16} /> Buka Navigasi
                             </button>
+
+                            {/* Tombol Hubungi Penerima */}
+{(order?.shipping_phone || order?.guest_phone) && (
+  <a
+    href={`tel:${(order.shipping_phone || order.guest_phone).replace(/\s/g, '')}`}
+    className="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+  >
+    <Phone size={16} /> Hubungi Penerima
+  </a>
+)}
                             
                             {!trackingStates[delivery.id]?.active ? (
                               <button
@@ -779,11 +804,25 @@ export default function CourierDashboard() {
                             </div>
                           </div>
                           
-                          {/* 2. ALAMAT PENGIRIMAN */}
-                          <div className="bg-gray-800/50 rounded-lg p-3">
-                            <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman:</h4>
-                            <p className="text-xs">{order?.shipping_address || '-'}</p>
-                          </div>
+                          {/* 2. ALAMAT PENGIRIMAN + NOMOR HP */}
+<div className="bg-gray-800/50 rounded-lg p-3">
+  <h4 className="text-xs font-semibold text-gray-400 mb-1">📍 Alamat Pengiriman</h4>
+  <p className="text-xs">{order?.shipping_address || '-'}</p>
+  <div className="mt-2 pt-2 border-t border-white/10">
+    <h4 className="text-xs font-semibold text-gray-400 mb-1">📞 Nomor HP Penerima</h4>
+    <p className="text-xs">
+      {order?.shipping_phone || order?.guest_phone || '-'}
+      {order?.shipping_phone && (
+        <a
+          href={`tel:${order.shipping_phone.replace(/\s/g, '')}`}
+          className="ml-2 text-yellow-500 hover:text-yellow-400 text-xs underline"
+        >
+          📞 Hubungi
+        </a>
+      )}
+    </p>
+  </div>
+</div>
                           
                           {/* 3. INFO PEMESAN (TANPA TOMBOL WA) */}
                           <div className="bg-gray-800/50 rounded-lg p-3">

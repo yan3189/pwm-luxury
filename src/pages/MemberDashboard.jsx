@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar';
 import AddressPicker from '../components/AddressPicker';
 import { User, LogOut, Gift, Star, Mail, Phone, Edit2, Save, X, MapPin, Package, Eye } from 'lucide-react';
 import { hasGoogleIdentity, linkGoogleAccount } from '../services/authService';
+import PhoneManager from '../components/PhoneManager';
 
 export default function MemberDashboard() {
   const [user, setUser] = useState(null);
@@ -270,14 +271,14 @@ const handleLinkGoogle = async () => {
             {activeTab === 'profile' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
           </button>
           <button
-            onClick={() => setActiveTab('addresses')}
-            className={`py-2 px-4 font-medium text-sm transition-all relative ${
-              activeTab === 'addresses' ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Alamat
-            {activeTab === 'addresses' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
-          </button>
+  onClick={() => setActiveTab('addresses')}
+  className={`py-2 px-4 font-medium text-sm transition-all relative ${
+    activeTab === 'addresses' ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
+  }`}
+>
+  📞 Alamat & Nomor HP
+  {activeTab === 'addresses' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-yellow-500 rounded-full"></span>}
+</button>
           <button
             onClick={() => setActiveTab('orders')}
             className={`py-2 px-4 font-medium text-sm transition-all relative ${
@@ -396,39 +397,56 @@ const handleLinkGoogle = async () => {
           </>
         )}
 
-        {/* ========== TAB: ALAMAT ========== */}
-        {activeTab === 'addresses' && (
-          <div className="bg-gray-900/50 rounded-xl p-6 border border-white/10">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-display">Alamat Pengiriman</h2>
-              <button onClick={openAddAddress} className="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm">+ Tambah Alamat</button>
-            </div>
-            {addresses.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">Belum ada alamat. Klik "Tambah Alamat" untuk menambahkan.</p>
-            ) : (
-              <div className="space-y-3">
-                {addresses.map(addr => (
-                  <div key={addr.id} className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{addr.label}</span>
-                        {addr.is_default && <span className="text-yellow-500 text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">Utama</span>}
-                      </div>
-                      <p className="text-gray-400 text-sm mt-1">{addr.address_text}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditAddress(addr)} className="text-blue-400 text-sm">Edit</button>
-                      <button onClick={() => deleteAddress(addr.id)} className="text-red-400 text-sm">Hapus</button>
-                      {!addr.is_default && (
-                        <button onClick={() => setDefaultAddress(addr.id)} className="text-yellow-500 text-sm">Jadikan Utama</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+        {/* ========== TAB: ALAMAT & NOMOR HP ========== */}
+{activeTab === 'addresses' && (
+  <div className="space-y-6">
+    {/* Alamat */}
+    <div className="bg-gray-900/50 rounded-xl p-6 border border-white/10">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-display flex items-center gap-2">
+          <MapPin size={20} className="text-yellow-500" />
+          Alamat Pengiriman
+        </h2>
+        <button onClick={openAddAddress} className="bg-yellow-500 text-black px-3 py-1 rounded-full text-sm">
+          + Tambah Alamat
+        </button>
+      </div>
+      
+      {addresses.length === 0 ? (
+        <p className="text-gray-500 text-center py-4">Belum ada alamat. Klik "Tambah Alamat" untuk menambahkan.</p>
+      ) : (
+        <div className="space-y-3">
+          {addresses.map(addr => (
+            <div key={addr.id} className="bg-gray-800/50 rounded-lg p-3 flex justify-between items-start">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{addr.label}</span>
+                  {addr.is_default && <span className="text-yellow-500 text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">Utama</span>}
+                </div>
+                <p className="text-gray-400 text-sm mt-1">{addr.address_text}</p>
               </div>
-            )}
-          </div>
-        )}
+              <div className="flex gap-2">
+                <button onClick={() => openEditAddress(addr)} className="text-blue-400 text-sm">Edit</button>
+                <button onClick={() => deleteAddress(addr.id)} className="text-red-400 text-sm">Hapus</button>
+                {!addr.is_default && (
+                  <button onClick={() => setDefaultAddress(addr.id)} className="text-yellow-500 text-sm">Jadikan Utama</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {/* Nomor HP */}
+    <PhoneManager 
+      memberId={user?.id} 
+      onUpdate={() => {
+        // Refresh data jika diperlukan
+      }}
+    />
+  </div>
+)}
 
         {/* ========== TAB: PESANAN ========== */}
         {activeTab === 'orders' && (

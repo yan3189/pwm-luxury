@@ -13,6 +13,7 @@ import { getBonuses } from '../services/upsellService';
 import { getAvailableVouchers, calculateTotalDiscount } from '../services/voucherService';
 import { createMidtransTransaction, loadMidtransScript, openMidtransPayment } from '../services/midtransService';
 import { Plus, Minus, Gift, Tag, Truck, Percent, Coins, ChevronDown, ChevronUp } from 'lucide-react';
+import PhoneSelector from '../components/PhoneSelector';
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState({ store_id: null, items: [] });
@@ -60,6 +61,10 @@ export default function CheckoutPage() {
   const [midtransLoading, setMidtransLoading] = useState(false);
   const [midtransClientKey] = useState(import.meta.env.VITE_MIDTRANS_CLIENT_KEY || '');
   const [snapLoaded, setSnapLoaded] = useState(false);
+
+  const [selectedPhoneId, setSelectedPhoneId] = useState(null);
+  const [shippingPhone, setShippingPhone] = useState('');
+  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState('');
 
   // ========== LOAD MIDTRANS SNAP ==========
   useEffect(() => {
@@ -343,6 +348,7 @@ export default function CheckoutPage() {
       let guestName = null;
       let guestPhone = null;
       let addressId = null;
+      let shippingPhone = ''; 
 
       // ========== KASUS MEMBER ==========
       if (user) {
@@ -384,6 +390,7 @@ export default function CheckoutPage() {
           shippingLng = selectedAddress.longitude;
           addressId = selectedAddress.id;
         }
+        shippingPhone = selectedPhoneNumber;
       } 
       // ========== KASUS GUEST ==========
       else {
@@ -395,6 +402,7 @@ export default function CheckoutPage() {
         shippingAddress = guestForm.address;
         shippingLat = guestForm.lat;
         shippingLng = guestForm.lng;
+         shippingPhone = guestForm.phone;
 
         if (!guestUser) throw new Error('Guest user not initialized');
         memberId = guestUser.id;
@@ -434,6 +442,7 @@ export default function CheckoutPage() {
         upsellTotal,
         subtotal,
         effectiveShipping,
+        shippingPhone: shippingPhone || guestPhone,
         finalTotal
       };
 
@@ -475,6 +484,7 @@ export default function CheckoutPage() {
         shipping_latitude: shippingLat,
         shipping_longitude: shippingLng,
         shipping_cost: effectiveShipping, // ← ONGKIR ASLI
+        shipping_phone: orderData.shippingPhone || guestPhone || null,
         notes: notes,
         address_id: addressId,
         voucher_discount: voucherDiscount,
@@ -554,6 +564,7 @@ const handleMidtransPayment = async () => {
       shipping_latitude: shippingLat,
       shipping_longitude: shippingLng,
       shipping_cost: effectiveShipping,
+      shipping_phone: orderData.shippingPhone || guestPhone || null,
       notes: notes,
       address_id: addressId,
       voucher_discount: voucherDiscount,
@@ -832,7 +843,7 @@ const handleMidtransPayment = async () => {
         <h1 className="text-2xl font-display mb-6">Checkout</h1>
         <div className="grid md:grid-cols-2 gap-6">
           
-          {/* ========== KOLOM KIRI: FORM ========== */}
+           {/* ========== KOLOM KIRI: FORM ========== */}
           <div className="space-y-4">
             {user ? (
               <div className="bg-gray-900/50 rounded-xl p-4">
@@ -889,22 +900,66 @@ const handleMidtransPayment = async () => {
                 {!selectedAddressId && !showNewAddressForm && (
                   <p className="text-yellow-500 text-xs mt-1">⚠️ Silakan pilih alamat</p>
                 )}
+
+                {/* ===== NOMOR HP UNTUK MEMBER (LOGIN) ===== */}
+                <PhoneSelector
+                  memberId={user.id}
+                  selectedPhoneId={selectedPhoneId}
+                  onSelect={(phoneId, phoneNumber) => {
+                    setSelectedPhoneId(phoneId);
+                    setShippingPhone(phoneNumber);
+                    setSelectedPhoneNumber(phoneNumber);
+                  }}
+                  onPhoneAdded={(newPhone) => {
+                    setSelectedPhoneId(newPhone.id);
+                    setShippingPhone(newPhone.phone);
+                    setSelectedPhoneNumber(newPhone.phone);
+                  }}
+                  required={true}
+                  label="Nomor HP Penerima"
+                  className="mt-3"
+                />
               </div>
             ) : (
               <div className="bg-gray-900/50 rounded-xl p-4 space-y-3">
                 <h2 className="font-semibold">Data Pengirim</h2>
-                <input type="text" placeholder="Nama Lengkap" className="w-full p-2 rounded bg-black/50 border border-white/20" value={guestForm.name} onChange={e => setGuestForm({...guestForm, name: e.target.value})} />
-                <input type="tel" placeholder="Nomor HP" className="w-full p-2 rounded bg-black/50 border border-white/20" value={guestForm.phone} onChange={e => setGuestForm({...guestForm, phone: e.target.value})} />
+                
+                <input
+                  type="text"
+                  placeholder="Nama Lengkap *"
+                  className="w-full p-2 rounded bg-black/50 border border-white/20"
+                  value={guestForm.name}
+                  onChange={(e) => setGuestForm({ ...guestForm, name: e.target.value })}
+                />
+
+                {/* ===== NOMOR HP UNTUK GUEST (TIDAK LOGIN) ===== */}
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Nomor HP Penerima *</label>
+                  <input
+                    type="tel"
+                    placeholder="0812-3456-7890"
+                    className="w-full p-2 rounded bg-black/50 border border-white/20 focus:border-yellow-500 focus:outline-none"
+                    value={guestForm.phone}
+                    onChange={(e) => setGuestForm({ ...guestForm, phone: e.target.value })}
+                    required
+                  />
+                </div>
+
                 <AddressPicker onAddressChange={handleGuestAddressChange} />
               </div>
             )}
 
             <div className="bg-gray-900/50 rounded-xl p-4">
               <h2 className="font-semibold mb-2">Catatan (opsional)</h2>
-              <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Contoh: Tolong dibungkus rapi" />
+              <textarea
+                rows="2"
+                className="w-full p-2 rounded bg-black/50 border border-white/20"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Contoh: Tolong dibungkus rapi"
+              />
             </div>
           </div>
-
           {/* ========== KOLOM KANAN: RINGKASAN ========== */}
           <div className="space-y-4">
             
