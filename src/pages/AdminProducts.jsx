@@ -1,16 +1,20 @@
 // ========== FILE: src/pages/AdminProducts.jsx ==========
-// Halaman manajemen produk dengan kategori, diskon, favorit, upsell
+// Halaman manajemen produk dengan kategori, diskon, favorit, upsell, dan media gallery
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Package, Edit, Trash2, Plus, Percent, Star, ShoppingBag } from 'lucide-react'
+import { Package, Edit, Trash2, Plus, Percent, Star, ShoppingBag, X } from 'lucide-react'
+import MediaGallery from '../components/MediaGallery'
+import { markMediaAsUsed, unmarkMediaAsUsed } from '../services/mediaService'
 
 export default function AdminProducts() {
   const [store, setStore] = useState(null)
+  const [user, setUser] = useState(null) // ← TAMBAHKAN
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showMediaGallery, setShowMediaGallery] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [productForm, setProductForm] = useState({
     name: '',
@@ -36,6 +40,8 @@ export default function AdminProducts() {
       navigate('/admin/login')
       return
     }
+    setUser(user) // ← SIMPAN USER
+
     const { data: userData } = await supabase
       .from('users')
       .select('store_id')
@@ -146,31 +152,112 @@ export default function AdminProducts() {
       is_upsell: productForm.is_upsell || false
     }
 
+    let productId = editingProduct?.id
+
     if (editingProduct) {
+      // UPDATE
       const { error } = await supabase
         .from('products')
         .update(productData)
         .eq('id', editingProduct.id)
-      if (error) alert('Gagal update: ' + error.message)
+      if (error) {
+        alert('Gagal update: ' + error.message)
+        return
+      }
+      productId = editingProduct.id
     } else {
-      const { error } = await supabase
+      // CREATE
+      const { data, error } = await supabase
         .from('products')
         .insert([productData])
-      if (error) alert('Gagal tambah: ' + error.message)
+        .select()
+      if (error) {
+        alert('Gagal tambah: ' + error.message)
+        return
+      }
+      productId = data[0]?.id
     }
+
+    // ============================================================
+    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
+    // ============================================================
+    if (productForm.image_url && productId) {
+      try {
+        // Cari media di media_library berdasarkan URL
+        const { data: mediaData } = await supabase
+          .from('media_library')
+          .select('id')
+          .eq('file_url', productForm.image_url)
+          .maybeSingle()
+        
+        if (mediaData) {
+          await markMediaAsUsed(
+            [mediaData.id],
+            { 
+              type: 'product', 
+              id: productId, 
+              name: productForm.name || 'Produk' 
+            }
+          )
+          console.log('✅ Media marked as used:', mediaData.id)
+        }
+      } catch (err) {
+        console.error('Error marking media as used:', err)
+        // Tidak perlu alert, biarkan proses lanjut
+      }
+    }
+
     setShowModal(false)
     fetchStoreAndProducts(store.id)
   }
 
   const handleDelete = async (productId) => {
-    if (confirm('Yakin hapus produk ini?')) {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', productId)
-      if (error) alert('Gagal hapus: ' + error.message)
-      else fetchStoreAndProducts(store.id)
+    if (!confirm('Yakin hapus produk ini?')) return
+
+    // ============================================================
+    // AMBIL DATA PRODUK SEBELUM DIHAPUS (UNTUK UNMARK MEDIA)
+    // ============================================================
+    const { data: productData } = await supabase
+      .from('products')
+      .select('image_url, name')
+      .eq('id', productId)
+      .single()
+
+    // Hapus produk
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', productId)
+    
+    if (error) {
+      alert('Gagal hapus: ' + error.message)
+      return
     }
+
+    // ============================================================
+    // UNMARK MEDIA (JIKA ADA GAMBAR)
+    // ============================================================
+    if (productData?.image_url) {
+      try {
+        const { data: mediaData } = await supabase
+          .from('media_library')
+          .select('id')
+          .eq('file_url', productData.image_url)
+          .maybeSingle()
+        
+        if (mediaData) {
+          await unmarkMediaAsUsed(
+            [mediaData.id],
+            { type: 'product', id: productId }
+          )
+          console.log('✅ Media unmarked:', mediaData.id)
+        }
+      } catch (err) {
+        console.error('Error unmarking media:', err)
+      }
+    }
+
+    fetchStoreAndProducts(store.id)
   }
 
   const toggleUpsell = async (productId, currentValue) => {
@@ -185,6 +272,25 @@ export default function AdminProducts() {
   const getDiscountedPrice = (price, discountPercentage) => {
     if (!discountPercentage || discountPercentage === 0) return price
     return Math.round(price * (100 - discountPercentage) / 100)
+  }
+
+  // Handler untuk pilih gambar dari MediaGallery
+  const handleMediaSelect = (url, selectedMedia) => {
+    setProductForm({ ...productForm, image_url: url })
+    
+    // Tandai media sebagai used
+    if (selectedMedia && selectedMedia.length > 0 && editingProduct?.id) {
+      markMediaAsUsed(
+        selectedMedia.map(m => m.id),
+        { 
+          type: 'product', 
+          id: editingProduct.id, 
+          name: productForm.name || 'Produk' 
+        }
+      ).catch(err => console.error('Error marking media:', err))
+    }
+    
+    setShowMediaGallery(false)
   }
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>
@@ -304,13 +410,14 @@ export default function AdminProducts() {
         </div>
       </div>
 
-      {/* MODAL TAMBAH/EDIT PRODUK */}
+      {/* ===== MODAL TAMBAH/EDIT PRODUK ===== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
             <h3 className="text-xl font-display mb-4">{editingProduct ? 'Edit Produk' : 'Tambah Produk'}</h3>
             
             <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+              {/* Nama Produk */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Nama Produk</label>
                 <input 
@@ -321,6 +428,7 @@ export default function AdminProducts() {
                 />
               </div>
 
+              {/* Kategori */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Kategori</label>
                 <select 
@@ -340,6 +448,7 @@ export default function AdminProducts() {
                 )}
               </div>
 
+              {/* Harga */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Harga (Rp)</label>
                 <input 
@@ -350,6 +459,7 @@ export default function AdminProducts() {
                 />
               </div>
 
+              {/* Stok */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Stok</label>
                 <input 
@@ -360,6 +470,7 @@ export default function AdminProducts() {
                 />
               </div>
 
+              {/* Diskon */}
               <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
@@ -389,6 +500,7 @@ export default function AdminProducts() {
                 </div>
               )}
 
+              {/* Favorit */}
               <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
@@ -400,6 +512,7 @@ export default function AdminProducts() {
                 <label htmlFor="is_featured" className="text-sm text-gray-300">Produk Favorit</label>
               </div>
 
+              {/* Upsell */}
               <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
@@ -411,20 +524,31 @@ export default function AdminProducts() {
                 <label htmlFor="is_upsell" className="text-sm text-gray-300">Produk Upselling (tampil di checkout)</label>
               </div>
 
+              {/* Gambar */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">URL Gambar</label>
-                <input 
-                  type="text" 
-                  className="w-full p-2 rounded bg-black/50 border border-white/20" 
-                  placeholder="https://..."
-                  value={productForm.image_url}
-                  onChange={e => setProductForm({...productForm, image_url: e.target.value})}
-                />
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 p-2 rounded bg-black/50 border border-white/20" 
+                    placeholder="https://..."
+                    value={productForm.image_url}
+                    onChange={e => setProductForm({...productForm, image_url: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMediaGallery(true)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih dari Galeri
+                  </button>
+                </div>
                 {productForm.image_url && (
                   <img src={productForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
                 )}
               </div>
 
+              {/* Deskripsi */}
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Deskripsi</label>
                 <textarea 
@@ -444,6 +568,28 @@ export default function AdminProducts() {
                 Batal
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY ===== */}
+      {showMediaGallery && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">Pilih Gambar</h2>
+              <button onClick={() => setShowMediaGallery(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes="image"
+              onSelect={handleMediaSelect}
+            />
           </div>
         </div>
       )}

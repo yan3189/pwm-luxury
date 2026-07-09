@@ -40,6 +40,7 @@ import MemberSettingsCallback from './pages/MemberSettingsCallback';
 import AdminCreateUser from './pages/AdminCreateUser';
 import AdminStockManager from './pages/AdminStockManager';
 import AdminPromotions from './pages/AdminPromotions';
+import AdminMedia from './pages/AdminMedia';
 
 function App() {
   return (
@@ -83,6 +84,7 @@ function App() {
       <Route path="/admin/create-user" element={<AdminCreateUser />} />
       <Route path="/admin/stock" element={<AdminStockManager />} />
       <Route path="/admin/promotions" element={<AdminPromotions />} />
+      <Route path="/admin/media" element={<AdminMedia />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

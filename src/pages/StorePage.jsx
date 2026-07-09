@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar'
 import FloatingCart from '../components/FloatingCart'
 import LocalSearch from '../components/LocalSearch'
 import { addToCart as addToCartService } from '../services/cartService'
+import ProductCard from '../components/ProductCard';
 
 export default function StorePage() {
   const { slug } = useParams()
@@ -145,51 +146,31 @@ export default function StorePage() {
     setIsSearching(false)
   }
 
-  // Fungsi render produk (grid)
-  const renderProducts = (productsToRender) => {
-    if (!productsToRender || productsToRender.length === 0) {
-      return <div className="text-center text-gray-500 py-12">Belum ada produk.</div>
-    }
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-        {productsToRender.map(p => (
-          <div 
-            key={p.id} 
-            id={`product-${p.id}`}
-            className="bg-gray-900/50 rounded-xl p-3 hover:scale-105 transition-transform duration-300"
-          >
-            <img 
-              src={p.image_url || 'https://placehold.co/400x300'} 
-              className="w-full h-32 md:h-40 object-cover rounded-lg mb-2" 
-              alt={p.name}
-            />
-            <p className="font-bold text-sm md:text-base line-clamp-1">{p.name}</p>
-            
-            {p.has_discount ? (
-              <div>
-                <p className="text-yellow-500 text-sm md:text-base font-semibold">
-                  Rp {Math.round(p.price * (100 - p.discount_percentage) / 100).toLocaleString()}
-                </p>
-                <p className="text-gray-400 text-xs line-through">Rp {p.price.toLocaleString()}</p>
-                <span className="text-red-400 text-xs">Diskon {p.discount_percentage}%</span>
-              </div>
-            ) : (
-              <p className="text-yellow-500 text-sm md:text-base font-semibold">Rp {p.price.toLocaleString()}</p>
-            )}
-            
-            {p.description && <p className="text-gray-400 text-xs mt-1 line-clamp-2">{p.description}</p>}
-            
-            <button 
-              onClick={() => handleAddToCart(p)} 
-              className="mt-3 w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-1.5 rounded-full transition text-sm"
-            >
-              🛒 Tambah ke Keranjang
-            </button>
-          </div>
-        ))}
-      </div>
-    )
+  // ========== RENDER PRODUK (DENGAN PRODUCT CARD) ==========
+const renderProducts = (productsToRender) => {
+  if (!productsToRender || productsToRender.length === 0) {
+    return <div className="text-center text-gray-500 py-12">Belum ada produk.</div>;
   }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+      {productsToRender.map(p => (
+        <ProductCard
+          key={p.id}
+          product={p}
+          onAddToCart={handleAddToCart}
+          onViewDetail={(product) => {
+            // Scroll ke produk atau navigasi
+            const element = document.getElementById(`product-${product.id}`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
   if (loading) {
     return (

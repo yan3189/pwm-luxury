@@ -664,6 +664,22 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
+        
+// Di dalam importProducts, setelah insert produk
+if (insertData.image_url) {
+  const { data: mediaData } = await supabase
+    .from('media_library')
+    .select('id')
+    .eq('file_url', insertData.image_url)
+    .maybeSingle();
+  
+  if (mediaData) {
+    await markMediaAsUsed(
+      [mediaData.id],
+      { type: 'product', id: data[0]?.id, name: insertData.name }
+    );
+  }
+}
 
         console.log(`📦 Inserting: ${insertData.name} | code: ${insertData.product_code} | store: ${storeId}`);
 

@@ -121,7 +121,7 @@ useEffect(() => {
       <footer className="border-t border-white/10 py-12 text-center text-gray-500 text-sm">
         <div className="max-w-7xl mx-auto px-4">
           <p className="mb-2">© 2026 PWM Ecosystem. All rights reserved.</p>
-          <p className="text-xs">#NeverStopFlying</p>
+          <p className="text-xs">#WhyAreYouRunning?</p>
         </div>
       </footer>
     </div>

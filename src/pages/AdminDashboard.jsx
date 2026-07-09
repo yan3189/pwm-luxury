@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { 
   Package, Newspaper, Calendar, Users, MessageCircle, 
-  ShoppingBag, Edit, ExternalLink, Settings, Gift , Truck, UserPlus, X, FileSpreadsheet
+  ShoppingBag, Edit, ExternalLink, Image, Settings, Gift , Truck, UserPlus, X, FileSpreadsheet
 } from 'lucide-react'
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
@@ -483,6 +483,12 @@ rawOrders.forEach(order => {
       </svg>
       Import Produk
     </button>
+    <button 
+  onClick={() => navigate('/admin/media')} 
+  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition"
+>
+  <Image size={16} /> Media
+</button>
     <button
       onClick={() => {
         setGeneratedPassword(generatePassword());
@@ -808,6 +814,12 @@ rawOrders.forEach(order => {
           >
             <FileSpreadsheet size={16} /> Import Produk
           </button>
+          <button 
+  onClick={() => navigate('/admin/media')} 
+  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full text-sm transition"
+>
+  <Image size={16} /> Media
+</button>
         </div>
 
         {/* Preview 6 card (produk, artikel, event, member, pesan, pesanan) */}
