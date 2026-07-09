@@ -425,6 +425,20 @@ const renderArticlesAndEvents = () => {
   // Tentukan produk yang akan ditampilkan
   const productsToShow = isSearching ? searchResults : displayProducts
 
+// ============================================================
+// FUNGSI FORMAT URL SOSIAL MEDIA
+// ============================================================
+const formatSocialUrl = (url) => {
+  if (!url) return null;
+  url = url.trim();
+  // Jika sudah ada http:// atau https://, langsung pakai
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  // Jika tidak ada, tambahkan https://
+  return `https://${url}`;
+};
+
   return (
     <div className="bg-black text-white min-h-screen">
       <Navbar />
@@ -440,12 +454,15 @@ const renderArticlesAndEvents = () => {
           {store.logo && (
             <img src={store.logo} alt={store.name} className="h-24 w-24 object-contain rounded-full bg-white/10 p-2" />
           )}
-          {/* Sosial Media Icons */}
+
+        
+{/* SOSIAL MEDIA ICONS DI HEADER*/}
+
 {(store.instagram_url || store.tiktok_url) && (
   <div className="absolute bottom-4 right-4 flex gap-3 z-10">
     {store.instagram_url && (
       <a
-        href={store.instagram_url}
+        href={formatSocialUrl(store.instagram_url)}
         target="_blank"
         rel="noopener noreferrer"
         className="bg-black/50 backdrop-blur-sm p-2 rounded-full hover:bg-yellow-500/30 hover:scale-110 transition-all duration-300 border border-white/20"
@@ -456,7 +473,7 @@ const renderArticlesAndEvents = () => {
     )}
     {store.tiktok_url && (
       <a
-        href={store.tiktok_url}
+        href={formatSocialUrl(store.tiktok_url)}
         target="_blank"
         rel="noopener noreferrer"
         className="bg-black/50 backdrop-blur-sm p-2 rounded-full hover:bg-yellow-500/30 hover:scale-110 transition-all duration-300 border border-white/20"
