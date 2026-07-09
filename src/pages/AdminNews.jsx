@@ -1,5 +1,5 @@
 // ========== FILE: src/pages/AdminNews.jsx ==========
-// Halaman manajemen news (full CRUD dengan tabel + Media Gallery)
+// Halaman manajemen news (full CRUD dengan tabel + Media Gallery + Video)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -14,8 +14,15 @@ export default function AdminNews() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showMediaGallery, setShowMediaGallery] = useState(false)
+  const [showVideoGallery, setShowVideoGallery] = useState(false)
   const [editingNews, setEditingNews] = useState(null)
-  const [newsForm, setNewsForm] = useState({ title: '', excerpt: '', content: '', image_url: '' })
+  const [newsForm, setNewsForm] = useState({ 
+    title: '', 
+    excerpt: '', 
+    content: '', 
+    image_url: '',
+    video_url: '' 
+  })
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -62,7 +69,7 @@ export default function AdminNews() {
 
   const openAddModal = () => {
     setEditingNews(null)
-    setNewsForm({ title: '', excerpt: '', content: '', image_url: '' })
+    setNewsForm({ title: '', excerpt: '', content: '', image_url: '', video_url: '' })
     setShowModal(true)
   }
 
@@ -72,7 +79,8 @@ export default function AdminNews() {
       title: item.title,
       excerpt: item.excerpt || '',
       content: item.content || '',
-      image_url: item.image_url || ''
+      image_url: item.image_url || '',
+      video_url: item.video_url || ''
     })
     setShowModal(true)
   }
@@ -83,7 +91,6 @@ export default function AdminNews() {
   const handleMediaSelect = (url, selectedMedia) => {
     setNewsForm({ ...newsForm, image_url: url })
     
-    // Tandai media sebagai used (jika artikel sudah punya ID)
     if (selectedMedia && selectedMedia.length > 0 && editingNews?.id) {
       markMediaAsUsed(
         selectedMedia.map(m => m.id),
@@ -98,6 +105,11 @@ export default function AdminNews() {
     setShowMediaGallery(false)
   }
 
+  const handleVideoSelect = (url, selectedMedia) => {
+    setNewsForm({ ...newsForm, video_url: url })
+    setShowVideoGallery(false)
+  }
+
   const handleSave = async () => {
     if (!store) return
     
@@ -107,6 +119,7 @@ export default function AdminNews() {
       excerpt: newsForm.excerpt,
       content: newsForm.content,
       image_url: newsForm.image_url,
+      video_url: newsForm.video_url || null,
       published_at: new Date().toISOString()
     }
 
@@ -134,9 +147,7 @@ export default function AdminNews() {
       newsId = data[0]?.id
     }
 
-    // ============================================================
-    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
-    // ============================================================
+    // Tandai media sebagai used (jika ada gambar)
     if (newsForm.image_url && newsId) {
       try {
         const { data: mediaData } = await supabase
@@ -168,7 +179,6 @@ export default function AdminNews() {
   const handleDelete = async (newsId) => {
     if (!confirm('Yakin hapus artikel ini?')) return
 
-    // Ambil data artikel sebelum dihapus (untuk unmark media)
     const { data: newsData } = await supabase
       .from('news')
       .select('image_url, title')
@@ -185,7 +195,6 @@ export default function AdminNews() {
       return
     }
 
-    // Unmark media
     if (newsData?.image_url) {
       try {
         await unmarkMediaByEntity(newsId, 'news')
@@ -252,9 +261,9 @@ export default function AdminNews() {
               <input type="text" placeholder="Excerpt (ringkasan singkat)" className="w-full p-2 rounded bg-black/50 border border-white/20" value={newsForm.excerpt} onChange={e=>setNewsForm({...newsForm, excerpt: e.target.value})} />
               <textarea placeholder="Konten lengkap" className="w-full p-2 rounded bg-black/50 border border-white/20" rows="3" value={newsForm.content} onChange={e=>setNewsForm({...newsForm, content: e.target.value})} />
               
-              {/* ===== GAMBAR + TOMBOL PILIH DARI GALERI ===== */}
+              {/* ===== GAMBAR ===== */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">URL Gambar (opsional)</label>
+                <label className="block text-sm text-gray-400 mb-1">URL Gambar</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
@@ -268,11 +277,35 @@ export default function AdminNews() {
                     onClick={() => setShowMediaGallery(true)}
                     className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
                   >
-                    🖼️ Pilih dari Galeri
+                    🖼️ Pilih Gambar
                   </button>
                 </div>
                 {newsForm.image_url && (
                   <img src={newsForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
+                )}
+              </div>
+
+              {/* ===== VIDEO ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL Video (opsional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 p-2 rounded bg-black/50 border border-white/20" 
+                    placeholder="https://..."
+                    value={newsForm.video_url}
+                    onChange={e => setNewsForm({...newsForm, video_url: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoGallery(true)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🎬 Pilih Video
+                  </button>
+                </div>
+                {newsForm.video_url && (
+                  <p className="text-xs text-gray-400 mt-1">Video URL: {newsForm.video_url}</p>
                 )}
               </div>
             </div>
@@ -284,7 +317,7 @@ export default function AdminNews() {
         </div>
       )}
 
-      {/* ===== MODAL MEDIA GALLERY ===== */}
+      {/* ===== MODAL MEDIA GALLERY (GAMBAR) ===== */}
       {showMediaGallery && (
         <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
           <div className="max-w-6xl mx-auto">
@@ -301,6 +334,28 @@ export default function AdminNews() {
               maxSelect={1}
               allowedTypes="image"
               onSelect={handleMediaSelect}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY (VIDEO) ===== */}
+      {showVideoGallery && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">Pilih Video</h2>
+              <button onClick={() => setShowVideoGallery(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes="video"
+              onSelect={handleVideoSelect}
             />
           </div>
         </div>

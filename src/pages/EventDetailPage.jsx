@@ -60,7 +60,17 @@ export default function EventDetailPage() {
         <div className="prose prose-invert max-w-none">
           <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">{event.description}</p>
         </div>
-
+{/* Video (jika ada) */}
+{event.video_url && (
+  <div className="mt-6 aspect-video bg-gray-800 rounded-xl overflow-hidden">
+    <video
+      src={event.video_url}
+      controls
+      className="w-full h-full object-cover"
+      poster={event.image_url || undefined}
+    />
+  </div>
+)}
         <div className="mt-10 pt-6 border-t border-white/10">
           <Link to={`/store/${event.stores?.slug}`} className="text-yellow-500 hover:underline">Kunjungi store ini →</Link>
         </div>

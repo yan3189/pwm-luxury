@@ -1,5 +1,5 @@
 // ========== FILE: src/pages/AdminEvents.jsx ==========
-// Halaman manajemen event (full CRUD dengan tabel + Media Gallery)
+// Halaman manajemen event (full CRUD dengan tabel + Media Gallery + Video)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,7 @@ export default function AdminEvents() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showMediaGallery, setShowMediaGallery] = useState(false)
+  const [showVideoGallery, setShowVideoGallery] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventForm, setEventForm] = useState({
     title: '',
@@ -21,7 +22,8 @@ export default function AdminEvents() {
     date: '',
     time: '',
     location: '',
-    image_url: ''
+    image_url: '',
+    video_url: ''
   })
   const navigate = useNavigate()
 
@@ -69,7 +71,7 @@ export default function AdminEvents() {
 
   const openAddModal = () => {
     setEditingEvent(null)
-    setEventForm({ title: '', description: '', date: '', time: '', location: '', image_url: '' })
+    setEventForm({ title: '', description: '', date: '', time: '', location: '', image_url: '', video_url: '' })
     setShowModal(true)
   }
 
@@ -81,7 +83,8 @@ export default function AdminEvents() {
       date: event.date,
       time: event.time || '',
       location: event.location || '',
-      image_url: event.image_url || ''
+      image_url: event.image_url || '',
+      video_url: event.video_url || ''
     })
     setShowModal(true)
   }
@@ -92,7 +95,6 @@ export default function AdminEvents() {
   const handleMediaSelect = (url, selectedMedia) => {
     setEventForm({ ...eventForm, image_url: url })
     
-    // Tandai media sebagai used (jika event sudah punya ID)
     if (selectedMedia && selectedMedia.length > 0 && editingEvent?.id) {
       markMediaAsUsed(
         selectedMedia.map(m => m.id),
@@ -107,6 +109,11 @@ export default function AdminEvents() {
     setShowMediaGallery(false)
   }
 
+  const handleVideoSelect = (url, selectedMedia) => {
+    setEventForm({ ...eventForm, video_url: url })
+    setShowVideoGallery(false)
+  }
+
   const handleSave = async () => {
     if (!store) return
     
@@ -117,7 +124,8 @@ export default function AdminEvents() {
       date: eventForm.date,
       time: eventForm.time || null,
       location: eventForm.location || null,
-      image_url: eventForm.image_url || null
+      image_url: eventForm.image_url || null,
+      video_url: eventForm.video_url || null
     }
 
     let eventId = editingEvent?.id
@@ -144,9 +152,7 @@ export default function AdminEvents() {
       eventId = data[0]?.id
     }
 
-    // ============================================================
-    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
-    // ============================================================
+    // Tandai media sebagai used (jika ada gambar)
     if (eventForm.image_url && eventId) {
       try {
         const { data: mediaData } = await supabase
@@ -178,7 +184,6 @@ export default function AdminEvents() {
   const handleDelete = async (eventId) => {
     if (!confirm('Yakin hapus event ini?')) return
 
-    // Ambil data event sebelum dihapus (untuk unmark media)
     const { data: eventData } = await supabase
       .from('events')
       .select('image_url, title')
@@ -195,7 +200,6 @@ export default function AdminEvents() {
       return
     }
 
-    // Unmark media
     if (eventData?.image_url) {
       try {
         await unmarkMediaByEntity(eventId, 'event')
@@ -270,9 +274,9 @@ export default function AdminEvents() {
               <input type="time" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.time} onChange={e => setEventForm({...eventForm, time: e.target.value})} />
               <input type="text" placeholder="Lokasi (opsional)" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.location} onChange={e => setEventForm({...eventForm, location: e.target.value})} />
               
-              {/* ===== GAMBAR + TOMBOL PILIH DARI GALERI ===== */}
+              {/* ===== GAMBAR ===== */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">URL Gambar (opsional)</label>
+                <label className="block text-sm text-gray-400 mb-1">URL Gambar</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
@@ -286,11 +290,35 @@ export default function AdminEvents() {
                     onClick={() => setShowMediaGallery(true)}
                     className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
                   >
-                    🖼️ Pilih dari Galeri
+                    🖼️ Pilih Gambar
                   </button>
                 </div>
                 {eventForm.image_url && (
                   <img src={eventForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
+                )}
+              </div>
+
+              {/* ===== VIDEO ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL Video (opsional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 p-2 rounded bg-black/50 border border-white/20" 
+                    placeholder="https://..."
+                    value={eventForm.video_url}
+                    onChange={e => setEventForm({...eventForm, video_url: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoGallery(true)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🎬 Pilih Video
+                  </button>
+                </div>
+                {eventForm.video_url && (
+                  <p className="text-xs text-gray-400 mt-1">Video URL: {eventForm.video_url}</p>
                 )}
               </div>
             </div>
@@ -302,7 +330,7 @@ export default function AdminEvents() {
         </div>
       )}
 
-      {/* ===== MODAL MEDIA GALLERY ===== */}
+      {/* ===== MODAL MEDIA GALLERY (GAMBAR) ===== */}
       {showMediaGallery && (
         <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
           <div className="max-w-6xl mx-auto">
@@ -319,6 +347,28 @@ export default function AdminEvents() {
               maxSelect={1}
               allowedTypes="image"
               onSelect={handleMediaSelect}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY (VIDEO) ===== */}
+      {showVideoGallery && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">Pilih Video</h2>
+              <button onClick={() => setShowVideoGallery(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes="video"
+              onSelect={handleVideoSelect}
             />
           </div>
         </div>

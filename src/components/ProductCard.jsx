@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Plus, ShoppingBag, Star } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function ProductCard({ 
   product, 
@@ -14,6 +15,7 @@ export default function ProductCard({
   storeName = '',
   className = ''
 }) {
+  const navigate = useNavigate();
   const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -30,8 +32,18 @@ export default function ProductCard({
     ? placeholderImage 
     : product.image_url;
 
+// Handle klik card (redirect ke detail)
+  const handleCardClick = (e) => {
+    // Jika yang diklik adalah tombol atau children dari tombol, jangan redirect
+    if (e.target.closest('button')) return;
+    navigate(`/product/${product.id}`);
+  };
+
   return (
-    <div className={`bg-gray-800/50 rounded-xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition group ${className}`}>
+    <div 
+      className={`bg-gray-800/50 rounded-xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition group cursor-pointer ${className}`}
+      onClick={handleCardClick}
+    >
       {/* ===== IMAGE ===== */}
       <div className="aspect-square relative overflow-hidden bg-gray-800">
         {isLoading && (

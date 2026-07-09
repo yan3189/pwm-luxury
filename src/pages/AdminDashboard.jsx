@@ -18,6 +18,7 @@ import {
 import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
 import ImportProductsModal from '../components/ImportProductsModal';
+import MediaGallery from '../components/MediaGallery'
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
@@ -55,10 +56,26 @@ const [showImportModal, setShowImportModal] = useState(false);
   // -------------------- FORM EDIT STORE --------------------
   const [storeForm, setStoreForm] = useState({
     name: '', description: '', logo: '', background_image: '', cover_image: '',
-    video_preview: '', category: 'club', alamat: '', latitude: '', longitude: ''
+    video_preview: '', category: 'club', alamat: '', latitude: '', longitude: '',instagram_url: '',tiktok_url: '' 
   })
 
   const navigate = useNavigate()
+const [showImagePicker, setShowImagePicker] = useState(false);
+const [pickerField, setPickerField] = useState('');
+const [user, setUser] = useState(null); 
+
+// ============================================================
+// HANDLE PILIH MEDIA DARI GALERI (UNTUK EDIT STORE)
+// ============================================================
+const handleStoreMediaSelect = (url, selectedMedia) => {
+  // Update field yang sesuai
+  setStoreForm(prev => ({
+    ...prev,
+    [pickerField]: url
+  }));
+  setShowImagePicker(false);
+  setPickerField('');
+};
 
   // ============================================================
   // 1. CEK USER & AMBIL DATA AWAL
@@ -69,6 +86,7 @@ const [showImportModal, setShowImportModal] = useState(false);
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/admin/login'); return }
+setUser(user);
 
     const { data: userData, error } = await supabase
       .from('users').select('role, store_id').eq('id', user.id).single()
@@ -188,7 +206,8 @@ const handleCreateStoreAdmin = async () => {
         logo: storeData.logo || '', background_image: storeData.background_image || '',
         cover_image: storeData.cover_image || '', video_preview: storeData.video_preview || '',
         category: storeData.category || 'club', alamat: storeData.alamat || '',
-        latitude: storeData.latitude || '', longitude: storeData.longitude || ''
+        latitude: storeData.latitude || '', longitude: storeData.longitude || '',instagram_url: storeData.instagram_url || '',
+tiktok_url: storeData.tiktok_url || ''
       })
     }
 
@@ -449,7 +468,8 @@ rawOrders.forEach(order => {
       video_preview: storeForm.video_preview, category: storeForm.category,
       alamat: storeForm.alamat,
       latitude: storeForm.latitude ? parseFloat(storeForm.latitude) : null,
-      longitude: storeForm.longitude ? parseFloat(storeForm.longitude) : null
+      longitude: storeForm.longitude ? parseFloat(storeForm.longitude) : null,
+      instagram_url: storeForm.instagram_url || null,tiktok_url: storeForm.tiktok_url || null 
     }).eq('id', store.id)
     if (error) alert('Gagal update: ' + error.message)
     else { alert('Store berhasil diupdate'); setShowStoreModal(false); fetchDashboardData(store.id) }
@@ -965,23 +985,190 @@ rawOrders.forEach(order => {
         </div>
       </div>
 
-      {/* MODAL EDIT STORE */}
+            {/* ===== MODAL EDIT STORE ===== */}
       {showStoreModal && store && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-display mb-4">Edit Profil Store</h2>
             <div className="space-y-4">
-              <div><label className="block text-sm text-gray-400 mb-1">Nama Store</label><input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.name} onChange={e => setStoreForm({...storeForm, name: e.target.value})} /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Deskripsi</label><textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.description} onChange={e => setStoreForm({...storeForm, description: e.target.value})} /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Kategori</label><select className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.category} onChange={e => setStoreForm({...storeForm, category: e.target.value})}><option value="bar">Bar</option><option value="club">Club</option><option value="coffee_shop">Coffee Shop</option></select></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Logo (URL)</label><input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.logo} onChange={e => setStoreForm({...storeForm, logo: e.target.value})} />{storeForm.logo && <img src={storeForm.logo} className="h-16 w-16 object-cover rounded-full mt-2" />}</div>
-              <div><label className="block text-sm text-gray-400 mb-1">Background Image</label><input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.background_image} onChange={e => setStoreForm({...storeForm, background_image: e.target.value})} />{storeForm.background_image && <img src={storeForm.background_image} className="h-20 w-full object-cover rounded mt-2" />}</div>
-              <div><label className="block text-sm text-gray-400 mb-1">Cover Image</label><input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.cover_image} onChange={e => setStoreForm({...storeForm, cover_image: e.target.value})} /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Video Preview</label><input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.video_preview} onChange={e => setStoreForm({...storeForm, video_preview: e.target.value})} /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Alamat</label><textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.alamat} onChange={e => setStoreForm({...storeForm, alamat: e.target.value})} /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Lokasi Store (Peta)</label><LocationPicker initialLat={storeForm.latitude ? parseFloat(storeForm.latitude) : null} initialLng={storeForm.longitude ? parseFloat(storeForm.longitude) : null} onLocationChange={(location) => { setStoreForm({ ...storeForm, latitude: location.lat.toString(), longitude: location.lng.toString(), alamat: location.address || storeForm.alamat }) }} /></div>
+              
+              {/* Nama Store */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Nama Store</label>
+                <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.name} onChange={e => setStoreForm({...storeForm, name: e.target.value})} />
+              </div>
+
+              {/* Deskripsi */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Deskripsi</label>
+                <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.description} onChange={e => setStoreForm({...storeForm, description: e.target.value})} />
+              </div>
+
+              {/* Kategori */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Kategori</label>
+                <select className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.category} onChange={e => setStoreForm({...storeForm, category: e.target.value})}>
+                  <option value="bar">Bar</option>
+                  <option value="club">Club</option>
+                  <option value="coffee_shop">Coffee Shop</option>
+                </select>
+              </div>
+
+              {/* ===== LOGO ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Logo</label>
+                <div className="flex gap-2">
+                  <input type="text" className="flex-1 p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.logo} onChange={e => setStoreForm({...storeForm, logo: e.target.value})} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerField('logo');
+                      setShowImagePicker(true);
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih
+                  </button>
+                </div>
+                {storeForm.logo && <img src={storeForm.logo} className="h-16 w-16 object-cover rounded-full mt-2" />}
+              </div>
+
+              {/* ===== BACKGROUND IMAGE ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Background Image</label>
+                <div className="flex gap-2">
+                  <input type="text" className="flex-1 p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.background_image} onChange={e => setStoreForm({...storeForm, background_image: e.target.value})} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerField('background_image');
+                      setShowImagePicker(true);
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih
+                  </button>
+                </div>
+                {storeForm.background_image && <img src={storeForm.background_image} className="h-20 w-full object-cover rounded mt-2" />}
+              </div>
+
+              {/* ===== COVER IMAGE ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Cover Image</label>
+                <div className="flex gap-2">
+                  <input type="text" className="flex-1 p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.cover_image} onChange={e => setStoreForm({...storeForm, cover_image: e.target.value})} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerField('cover_image');
+                      setShowImagePicker(true);
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih
+                  </button>
+                </div>
+                {storeForm.cover_image && <img src={storeForm.cover_image} className="h-20 w-full object-cover rounded mt-2" />}
+              </div>
+
+              {/* ===== VIDEO PREVIEW ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Video Preview</label>
+                <div className="flex gap-2">
+                  <input type="text" className="flex-1 p-2 rounded bg-black/50 border border-white/20" placeholder="https://..." value={storeForm.video_preview} onChange={e => setStoreForm({...storeForm, video_preview: e.target.value})} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerField('video_preview');
+                      setShowImagePicker(true);
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🎬 Pilih Video
+                  </button>
+                </div>
+                {storeForm.video_preview && <p className="text-xs text-gray-400 mt-1">Video URL: {storeForm.video_preview}</p>}
+              </div>
+
+              {/* Alamat */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Alamat</label>
+                <textarea rows="2" className="w-full p-2 rounded bg-black/50 border border-white/20" value={storeForm.alamat} onChange={e => setStoreForm({...storeForm, alamat: e.target.value})} />
+              </div>
+
+              {/* Lokasi Store (Peta) */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Lokasi Store (Peta)</label>
+                <LocationPicker 
+                  initialLat={storeForm.latitude ? parseFloat(storeForm.latitude) : null} 
+                  initialLng={storeForm.longitude ? parseFloat(storeForm.longitude) : null} 
+                  onLocationChange={(location) => { 
+                    setStoreForm({ ...storeForm, 
+                      latitude: location.lat.toString(), 
+                      longitude: location.lng.toString(), 
+                      alamat: location.address || storeForm.alamat 
+                    }) 
+                  }} 
+                />
+              </div>
+
+              {/* ===== SOSIAL MEDIA ===== */}
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <h4 className="text-sm font-semibold text-gray-400 mb-3">Sosial Media</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Instagram URL</label>
+                    <input 
+                      type="url" 
+                      className="w-full p-2 rounded bg-black/50 border border-white/20" 
+                      placeholder="https://instagram.com/..."
+                      value={storeForm.instagram_url || ''}
+                      onChange={e => setStoreForm({...storeForm, instagram_url: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">TikTok URL</label>
+                    <input 
+                      type="url" 
+                      className="w-full p-2 rounded bg-black/50 border border-white/20" 
+                      placeholder="https://tiktok.com/@..."
+                      value={storeForm.tiktok_url || ''}
+                      onChange={e => setStoreForm({...storeForm, tiktok_url: e.target.value})}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-3 mt-6"><button onClick={handleUpdateStore} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button><button onClick={() => setShowStoreModal(false)} className="bg-gray-700 px-4 py-2 rounded-full">Batal</button></div>
+
+            {/* Tombol Aksi */}
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleUpdateStore} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button>
+              <button onClick={() => setShowStoreModal(false)} className="bg-gray-700 px-4 py-2 rounded-full">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY UNTUK EDIT STORE ===== */}
+      {showImagePicker && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">
+                {pickerField === 'video_preview' ? 'Pilih Video' : 'Pilih Gambar'}
+              </h2>
+              <button onClick={() => { setShowImagePicker(false); setPickerField(''); }} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes={pickerField === 'video_preview' ? 'video' : 'image'}
+              onSelect={handleStoreMediaSelect}
+            />
           </div>
         </div>
       )}

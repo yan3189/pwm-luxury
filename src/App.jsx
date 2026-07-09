@@ -41,6 +41,7 @@ import AdminCreateUser from './pages/AdminCreateUser';
 import AdminStockManager from './pages/AdminStockManager';
 import AdminPromotions from './pages/AdminPromotions';
 import AdminMedia from './pages/AdminMedia';
+import ProductDetailPage from './pages/ProductDetailPage';
 
 function App() {
   return (
@@ -85,6 +86,7 @@ function App() {
       <Route path="/admin/stock" element={<AdminStockManager />} />
       <Route path="/admin/promotions" element={<AdminPromotions />} />
       <Route path="/admin/media" element={<AdminMedia />} />
+     <Route path="/product/:productId" element={<ProductDetailPage />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

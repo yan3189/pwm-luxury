@@ -15,6 +15,7 @@ import CategoryFilter from '../components/CategoryFilter'
 import ToastNotification from '../components/ToastNotification'
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll'
 import { addToCart as addToCartService } from '../services/cartService'
+import { Link2, Music2 } from 'lucide-react';
 
 // ============================================================
 // KONSTANTA - UBAH ANGKA INI UNTUK MENGATUR JUMLAH PRODUK PER BATCH
@@ -439,6 +440,33 @@ const renderArticlesAndEvents = () => {
           {store.logo && (
             <img src={store.logo} alt={store.name} className="h-24 w-24 object-contain rounded-full bg-white/10 p-2" />
           )}
+          {/* Sosial Media Icons */}
+{(store.instagram_url || store.tiktok_url) && (
+  <div className="absolute bottom-4 right-4 flex gap-3 z-10">
+    {store.instagram_url && (
+      <a
+        href={store.instagram_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="bg-black/50 backdrop-blur-sm p-2 rounded-full hover:bg-yellow-500/30 hover:scale-110 transition-all duration-300 border border-white/20"
+        aria-label="Instagram"
+      >
+        <Link2 size={22} className="text-white" />
+      </a>
+    )}
+    {store.tiktok_url && (
+      <a
+        href={store.tiktok_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="bg-black/50 backdrop-blur-sm p-2 rounded-full hover:bg-yellow-500/30 hover:scale-110 transition-all duration-300 border border-white/20"
+        aria-label="TikTok"
+      >
+        <Music2 size={22} className="text-white" />
+      </a>
+    )}
+  </div>
+)}
         </div>
       </div>
       
