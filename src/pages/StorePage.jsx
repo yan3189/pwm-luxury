@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Navbar from '../components/Navbar'
 import FloatingCart from '../components/FloatingCart'
@@ -337,22 +337,32 @@ export default function StorePage() {
   }
 
   // ============================================================
-  // 13. RENDER ARTIKEL & EVENT
-  // ============================================================
-  const renderArticlesAndEvents = () => {
-    const allItems = [
-      ...articles.map(a => ({ ...a, type: 'article', date: a.published_at })),
-      ...events.map(e => ({ ...e, type: 'event', date: e.date })),
-    ].sort((a, b) => new Date(b.date) - new Date(a.date))
+// RENDER ARTIKEL & EVENT (DENGAN LINK KE DETAIL)
+// ============================================================
+const renderArticlesAndEvents = () => {
+  const allItems = [
+    ...articles.map(a => ({ ...a, type: 'article', date: a.published_at })),
+    ...events.map(e => ({ ...e, type: 'event', date: e.date })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date))
 
-    if (allItems.length === 0) {
-      return <div className="text-center text-gray-500 py-12">Belum ada artikel atau event.</div>
-    }
+  if (allItems.length === 0) {
+    return <div className="text-center text-gray-500 py-12">Belum ada artikel atau event.</div>
+  }
 
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {allItems.map(item => (
-          <div key={`${item.type}-${item.id}`} className="bg-gray-800/50 rounded-xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition group">
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {allItems.map(item => {
+        // Tentukan link tujuan
+        const detailLink = item.type === 'article' 
+          ? `/news/${item.id}` 
+          : `/events/${item.id}`;
+
+        return (
+          <Link
+            key={`${item.type}-${item.id}`}
+            to={detailLink}
+            className="bg-gray-800/50 rounded-xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition group block"
+          >
             {item.image_url && (
               <div className="aspect-video overflow-hidden">
                 <img
@@ -383,11 +393,12 @@ export default function StorePage() {
                 </p>
               )}
             </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
   // ============================================================
   // RENDER

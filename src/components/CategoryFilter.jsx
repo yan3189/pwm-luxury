@@ -54,14 +54,14 @@ export default function CategoryFilter({
       <div ref={sentinelRef} className="h-px" />
 
       <div
-        ref={containerRef}
-        className={`
-          ${isSticky ? 'fixed top-0 left-0 right-0 z-30 bg-black/95 backdrop-blur-sm border-b border-white/10' : ''}
-          transition-all duration-300
-          ${className}
-        `}
-        style={isSticky ? { paddingTop: '8px', paddingBottom: '8px' } : {}}
-      >
+  ref={containerRef}
+  className={`
+    ${isSticky ? 'fixed top-[64px] left-0 right-0 z-40 bg-black/95 backdrop-blur-sm border-b border-white/10' : ''}
+    transition-all duration-300
+    ${className}
+  `}
+  style={isSticky ? { paddingTop: '8px', paddingBottom: '8px' } : {}}
+>
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide">
             {allCategories.map((cat) => {
