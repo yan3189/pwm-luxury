@@ -5,6 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
+import { markMediaAsUsed } from './mediaService';
 
 // ============================================================
 // 1. SANITASI INPUT (Cegah XSS & injection)
@@ -646,69 +647,83 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
           finalProductCode = await generateProductCode(storeId, categoryId);
         }
 
-        // ✅ INSERT DATA
-        const insertData = {
-          store_id: storeId,
-          name: sanitizeString(product.name),
-          price: product.price || 0,
-          description: sanitizeString(product.description || ''),
-          stock: product.stock || 0,
-          image_url: product.image_url || '',
-          is_active: product.is_active !== undefined ? product.is_active : true,
-          category_id: product.category_id || null,
-          barcode: product.barcode || null,
-          product_code: finalProductCode,
-          has_discount: false,
-          discount_percentage: 0,
-          is_featured: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-// Di dalam importProducts, setelah insert produk
-if (insertData.image_url) {
-  const { data: mediaData } = await supabase
-    .from('media_library')
-    .select('id')
-    .eq('file_url', insertData.image_url)
-    .maybeSingle();
-  
-  if (mediaData) {
-    await markMediaAsUsed(
-      [mediaData.id],
-      { type: 'product', id: data[0]?.id, name: insertData.name }
-    );
-  }
-}
+                      // ✅ INSERT DATA
+              const insertData = {
+                store_id: storeId,
+                name: sanitizeString(product.name),
+                price: product.price || 0,
+                description: sanitizeString(product.description || ''),
+                stock: product.stock || 0,
+                image_url: product.image_url || '',
+                is_active: product.is_active !== undefined ? product.is_active : true,
+                category_id: product.category_id || null,
+                barcode: product.barcode || null,
+                product_code: finalProductCode,
+                has_discount: false,
+                discount_percentage: 0,
+                is_featured: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              };
 
-        console.log(`📦 Inserting: ${insertData.name} | code: ${insertData.product_code} | store: ${storeId}`);
+              console.log(`📦 Inserting: ${insertData.name} | code: ${insertData.product_code} | store: ${storeId}`);
 
-        const { data, error } = await supabase
-          .from('products')
-          .insert([insertData])
-          .select();
+              const { data: productData, error: insertError } = await supabase
+                .from('products')
+                .insert([insertData])
+                .select();
 
-        if (error) {
-          console.error('❌ Insert error:', error);
-          errors.push({
-            product_name: product.name,
-            store_id: storeId,
-            error: error.message
-          });
-        } else {
-          results.push({
-            product_name: product.name,
-            store_id: storeId,
-            product_id: data[0]?.id,
-            product_code: data[0]?.product_code,
-            success: true
-          });
-        }
+              if (insertError) {
+                console.error('❌ Insert error:', insertError);
+                errors.push({
+                  product_name: product.name,
+                  store_id: storeId,
+                  error: insertError.message
+                });
+              } else {
+                const productId = productData[0]?.id;
+                
+                results.push({
+                  product_name: product.name,
+                  store_id: storeId,
+                  product_id: productId,
+                  product_code: productData[0]?.product_code,
+                  success: true
+                });
 
-        processed++;
-        if (onProgress) {
-          onProgress(processed, totalRecords);
-        }
+                // ============================================================
+                // ✅ TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
+                // ============================================================
+                if (productId && insertData.image_url) {
+                  try {
+                    const { data: mediaData } = await supabase
+                      .from('media_library')
+                      .select('id')
+                      .eq('file_url', insertData.image_url)
+                      .maybeSingle();
+                    
+                    if (mediaData) {
+                      await markMediaAsUsed(
+                        [mediaData.id],
+                        { 
+                          type: 'product', 
+                          id: productId, 
+                          name: insertData.name 
+                        }
+                      );
+                      console.log(`✅ Media marked as used for product: ${insertData.name}`);
+                    }
+                  } catch (markError) {
+                    console.error('Error marking media as used:', markError);
+                    // Jangan gagalkan import, hanya log error
+                  }
+                }
+              }
+
+              processed++;
+              if (onProgress) {
+                onProgress(processed, totalRecords);
+              }
       } catch (err) {
         console.error('❌ Error processing product:', err);
         errors.push({
@@ -723,6 +738,8 @@ if (insertData.image_url) {
       }
     }
   }
+
+  
 
   return {
     success: true,

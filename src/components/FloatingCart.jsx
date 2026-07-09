@@ -30,6 +30,19 @@ export default function FloatingCart() {
     };
   }, []);
 
+  const [isAnimating, setIsAnimating] = useState(false);
+
+// Event listener untuk animasi
+useEffect(() => {
+  const handleAnimate = () => {
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 500);
+  };
+  
+  window.addEventListener('cart-animate', handleAnimate);
+  return () => window.removeEventListener('cart-animate', handleAnimate);
+}, []);
+
   const handleUpdateQuantity = (productId, newQty) => {
     updateCartItemQuantity(productId, newQty);
     // refreshCart akan otomatis terpanggil via event listener
@@ -49,17 +62,20 @@ export default function FloatingCart() {
     <div className="fixed bottom-20 left-6 z-40">
       {/* Tombol floating (tertutup) */}
       {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="bg-yellow-500 text-black rounded-full p-3 shadow-lg hover:scale-105 transition relative"
-        >
-          <ShoppingBag size={24} />
-          {totalQuantity > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-              {totalQuantity}
-            </span>
-          )}
-        </button>
+       <button
+  onClick={() => setIsOpen(true)}
+  className={`
+    bg-yellow-500 text-black rounded-full p-3 shadow-lg hover:scale-105 transition relative
+    ${isAnimating ? 'animate-bounce' : ''}
+  `}
+>
+  <ShoppingBag size={24} />
+  {totalQuantity > 0 && (
+    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+      {totalQuantity}
+    </span>
+  )}
+</button>
       )}
 
       {/* Panel cart (terbuka) */}

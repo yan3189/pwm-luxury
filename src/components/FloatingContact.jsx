@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import BackToTopButton from './BackToTopButton';
 
 export default function FloatingContact() {
   const location = useLocation();
@@ -98,6 +99,8 @@ export default function FloatingContact() {
 
   return (
     <div className="fixed bottom-20 right-6 z-50">
+      <BackToTopButton className="mb-3" />
+      
       <Link
         to={contactLink}
         onMouseEnter={() => setIsExpanded(true)}
@@ -120,6 +123,7 @@ export default function FloatingContact() {
           </span>
         )}
       </Link>
+      
     </div>
   );
 }

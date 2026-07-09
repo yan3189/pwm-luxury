@@ -167,12 +167,12 @@ export async function uploadMediaFiles(files, storeId, userId, onProgress = null
         .from('media_library')
         .insert({
           store_id: storeId,
-          file_name: file.name,
+          file_name: file.name || 'unknown_file',
           file_path: filePath,
           file_url: publicUrl,
-          file_type: file.type,
+          file_type: file.type || 'unknown',
           file_size: file.size,
-          mime_type: file.type,
+          mime_type: file.type || 'unknown',
           is_used: false,
           used_by: [],
           uploaded_by: userId,
@@ -317,6 +317,11 @@ export async function markMediaAsUsed(mediaIds, usedBy) {
     throw new Error('Gagal mengambil data media: ' + fetchError.message);
   }
 
+  if (!mediaData || mediaData.length === 0) {
+    console.warn('⚠️ No media found for IDs:', mediaIds);
+    return { success: true, updated: 0 };
+  }
+
   // Filter media yang belum memiliki usedBy entry ini
   const updates = mediaData
     .filter(media => {
@@ -336,20 +341,29 @@ export async function markMediaAsUsed(mediaIds, usedBy) {
     return { success: true, updated: 0 };
   }
 
-  // Batch update
-  const { error: updateError } = await supabase
-    .from('media_library')
-    .upsert(updates, { onConflict: 'id' });
+  // ✅ UPDATE SATU PER SATU (HINDARI UPSERT)
+  let updatedCount = 0;
+  for (const update of updates) {
+    const { error: updateError } = await supabase
+      .from('media_library')
+      .update({
+        is_used: update.is_used,
+        used_by: update.used_by,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', update.id);
 
-  if (updateError) {
-    console.error('❌ Error marking media as used:', updateError);
-    throw new Error('Gagal menandai media: ' + updateError.message);
+    if (updateError) {
+      console.error('❌ Error updating media:', updateError);
+      // Lanjutkan ke yang lain, jangan throw
+    } else {
+      updatedCount++;
+    }
   }
 
-  console.log(`✅ Marked ${updates.length} media as used`);
-  return { success: true, updated: updates.length };
+  console.log(`✅ Marked ${updatedCount} media as used`);
+  return { success: true, updated: updatedCount };
 }
-
 /**
  * Hapus tanda used dari media (ketika produk dihapus)
  * @param {string[]} mediaIds - Array ID media
@@ -375,35 +389,37 @@ export async function unmarkMediaAsUsed(mediaIds, usedBy) {
     throw new Error('Gagal mengambil data media: ' + fetchError.message);
   }
 
-  const updates = mediaData
-    .map(media => {
-      const currentUsedBy = media.used_by || [];
-      const newUsedBy = currentUsedBy.filter(
-        item => !(item.id === usedBy.id && item.type === usedBy.type)
-      );
-      return {
-        id: media.id,
-        is_used: newUsedBy.length > 0,
-        used_by: newUsedBy,
-      };
-    })
-    .filter(update => update.is_used !== mediaData.find(m => m.id === update.id)?.is_used);
-
-  if (updates.length === 0) {
+  if (!mediaData || mediaData.length === 0) {
     return { success: true, updated: 0 };
   }
 
-  const { error: updateError } = await supabase
-    .from('media_library')
-    .upsert(updates, { onConflict: 'id' });
+  let updatedCount = 0;
+  for (const media of mediaData) {
+    const currentUsedBy = media.used_by || [];
+    const newUsedBy = currentUsedBy.filter(
+      item => !(item.id === usedBy.id && item.type === usedBy.type)
+    );
+    
+    const isStillUsed = newUsedBy.length > 0;
 
-  if (updateError) {
-    console.error('❌ Error unmarking media:', updateError);
-    throw new Error('Gagal menghapus tanda media: ' + updateError.message);
+    const { error: updateError } = await supabase
+      .from('media_library')
+      .update({
+        is_used: isStillUsed,
+        used_by: newUsedBy,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', media.id);
+
+    if (updateError) {
+      console.error('❌ Error unmarking media:', updateError);
+    } else {
+      updatedCount++;
+    }
   }
 
-  console.log(`✅ Unmarked ${updates.length} media`);
-  return { success: true, updated: updates.length };
+  console.log(`✅ Unmarked ${updatedCount} media`);
+  return { success: true, updated: updatedCount };
 }
 
 // ============================================================
@@ -469,6 +485,60 @@ export async function deleteMedia(mediaId, storeId) {
 }
 
 /**
+ * Hapus semua tanda used untuk suatu entitas (produk/news/event)
+ * @param {string} entityId - ID entitas (produk, news, event)
+ * @param {string} type - 'product' | 'news' | 'event'
+ * @returns {Promise<Object>} { success: true, updated: number }
+ */
+export async function unmarkMediaByEntity(entityId, type) {
+  if (!entityId || !type) {
+    throw new Error('Entity ID dan type wajib diisi');
+  }
+
+  // Cari semua media yang memiliki used_by dengan entity ini
+  const { data: mediaData, error: fetchError } = await supabase
+    .from('media_library')
+    .select('id, used_by')
+    .contains('used_by', [{ id: entityId, type: type }]);
+
+  if (fetchError) {
+    console.error('❌ Error fetching media for entity:', fetchError);
+    throw new Error('Gagal mengambil data media: ' + fetchError.message);
+  }
+
+  if (!mediaData || mediaData.length === 0) {
+    return { success: true, updated: 0 };
+  }
+
+  let updatedCount = 0;
+  for (const media of mediaData) {
+    const newUsedBy = (media.used_by || []).filter(
+      item => !(item.id === entityId && item.type === type)
+    );
+    
+    const isStillUsed = newUsedBy.length > 0;
+
+    const { error: updateError } = await supabase
+      .from('media_library')
+      .update({
+        is_used: isStillUsed,
+        used_by: newUsedBy,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', media.id);
+
+    if (updateError) {
+      console.error('❌ Error unmarking media:', updateError);
+    } else {
+      updatedCount++;
+    }
+  }
+
+  console.log(`✅ Unmarked ${updatedCount} media for ${type}: ${entityId}`);
+  return { success: true, updated: updatedCount };
+}
+
+/**
  * Hapus multiple media sekaligus
  * @param {string[]} mediaIds - Array ID media
  * @param {string} storeId - ID store
@@ -509,7 +579,7 @@ export async function markMediaAsUsedByUrl(fileUrl, usedBy) {
 
   const { data, error } = await supabase
     .from('media_library')
-    .select('id')
+    .select('id, file_name')  // ✅ TAMBAHKAN file_name
     .eq('file_url', fileUrl)
     .maybeSingle();
 
@@ -519,8 +589,17 @@ export async function markMediaAsUsedByUrl(fileUrl, usedBy) {
   }
 
   if (!data) {
-    // Media tidak ditemukan di library (mungkin URL eksternal)
+    console.warn('⚠️ Media not found in library for URL:', fileUrl);
     return { success: true, mediaId: null };
+  }
+
+  // ✅ CEK: Jika file_name null, perbaiki dulu
+  if (!data.file_name) {
+    console.warn('⚠️ Media has null file_name, fixing...');
+    await supabase
+      .from('media_library')
+      .update({ file_name: 'unknown_file' })
+      .eq('id', data.id);
   }
 
   try {

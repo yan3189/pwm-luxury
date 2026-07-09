@@ -1,14 +1,19 @@
 // ========== FILE: src/pages/AdminNews.jsx ==========
-// Halaman manajemen news (full CRUD dengan tabel)
+// Halaman manajemen news (full CRUD dengan tabel + Media Gallery)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { X } from 'lucide-react'
+import MediaGallery from '../components/MediaGallery'
+import { markMediaAsUsed, unmarkMediaByEntity } from '../services/mediaService'
 
 export default function AdminNews() {
   const [store, setStore] = useState(null)
+  const [user, setUser] = useState(null)
   const [news, setNews] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showMediaGallery, setShowMediaGallery] = useState(false)
   const [editingNews, setEditingNews] = useState(null)
   const [newsForm, setNewsForm] = useState({ title: '', excerpt: '', content: '', image_url: '' })
   const navigate = useNavigate()
@@ -23,6 +28,8 @@ export default function AdminNews() {
       navigate('/admin/login')
       return
     }
+    setUser(user)
+
     const { data: userData } = await supabase
       .from('users')
       .select('store_id')
@@ -70,8 +77,30 @@ export default function AdminNews() {
     setShowModal(true)
   }
 
+  // ============================================================
+  // HANDLE PILIH GAMBAR DARI GALERI
+  // ============================================================
+  const handleMediaSelect = (url, selectedMedia) => {
+    setNewsForm({ ...newsForm, image_url: url })
+    
+    // Tandai media sebagai used (jika artikel sudah punya ID)
+    if (selectedMedia && selectedMedia.length > 0 && editingNews?.id) {
+      markMediaAsUsed(
+        selectedMedia.map(m => m.id),
+        { 
+          type: 'news', 
+          id: editingNews.id, 
+          name: newsForm.title || 'Artikel Baru' 
+        }
+      ).catch(err => console.error('Error marking media:', err))
+    }
+    
+    setShowMediaGallery(false)
+  }
+
   const handleSave = async () => {
     if (!store) return
+    
     const newsData = {
       store_id: store.id,
       title: newsForm.title,
@@ -81,31 +110,92 @@ export default function AdminNews() {
       published_at: new Date().toISOString()
     }
 
+    let newsId = editingNews?.id
+
     if (editingNews) {
       const { error } = await supabase
         .from('news')
         .update(newsData)
         .eq('id', editingNews.id)
-      if (error) alert('Gagal update: ' + error.message)
+      if (error) {
+        alert('Gagal update: ' + error.message)
+        return
+      }
+      newsId = editingNews.id
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('news')
         .insert([newsData])
-      if (error) alert('Gagal tambah: ' + error.message)
+        .select()
+      if (error) {
+        alert('Gagal tambah: ' + error.message)
+        return
+      }
+      newsId = data[0]?.id
     }
+
+    // ============================================================
+    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
+    // ============================================================
+    if (newsForm.image_url && newsId) {
+      try {
+        const { data: mediaData } = await supabase
+          .from('media_library')
+          .select('id')
+          .eq('file_url', newsForm.image_url)
+          .maybeSingle()
+        
+        if (mediaData) {
+          await markMediaAsUsed(
+            [mediaData.id],
+            { 
+              type: 'news', 
+              id: newsId, 
+              name: newsForm.title || 'Artikel' 
+            }
+          )
+          console.log('✅ Media marked as used for news:', newsId)
+        }
+      } catch (err) {
+        console.error('Error marking media as used:', err)
+      }
+    }
+
     setShowModal(false)
     fetchStoreAndNews(store.id)
   }
 
   const handleDelete = async (newsId) => {
-    if (confirm('Yakin hapus artikel ini?')) {
-      const { error } = await supabase
-        .from('news')
-        .delete()
-        .eq('id', newsId)
-      if (error) alert('Gagal hapus: ' + error.message)
-      else fetchStoreAndNews(store.id)
+    if (!confirm('Yakin hapus artikel ini?')) return
+
+    // Ambil data artikel sebelum dihapus (untuk unmark media)
+    const { data: newsData } = await supabase
+      .from('news')
+      .select('image_url, title')
+      .eq('id', newsId)
+      .single()
+
+    const { error } = await supabase
+      .from('news')
+      .delete()
+      .eq('id', newsId)
+    
+    if (error) {
+      alert('Gagal hapus: ' + error.message)
+      return
     }
+
+    // Unmark media
+    if (newsData?.image_url) {
+      try {
+        await unmarkMediaByEntity(newsId, 'news')
+        console.log('✅ Media unmarked for news:', newsId)
+      } catch (err) {
+        console.error('Error unmarking media:', err)
+      }
+    }
+
+    fetchStoreAndNews(store.id)
   }
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>
@@ -152,19 +242,66 @@ export default function AdminNews() {
         </div>
       </div>
 
-      {/* Modal tambah/edit */}
+      {/* ===== MODAL TAMBAH/EDIT ARTIKEL ===== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10">
             <h3 className="text-xl font-display mb-4">{editingNews ? 'Edit Artikel' : 'Tambah Artikel'}</h3>
-            <input type="text" placeholder="Judul" className="w-full p-2 rounded bg-black/50 border border-white/20 mb-3" value={newsForm.title} onChange={e=>setNewsForm({...newsForm, title: e.target.value})} />
-            <input type="text" placeholder="Excerpt (ringkasan singkat)" className="w-full p-2 rounded bg-black/50 border border-white/20 mb-3" value={newsForm.excerpt} onChange={e=>setNewsForm({...newsForm, excerpt: e.target.value})} />
-            <textarea placeholder="Konten lengkap" className="w-full p-2 rounded bg-black/50 border border-white/20 mb-3" rows="3" value={newsForm.content} onChange={e=>setNewsForm({...newsForm, content: e.target.value})}></textarea>
-            <input type="text" placeholder="URL gambar (opsional)" className="w-full p-2 rounded bg-black/50 border border-white/20 mb-4" value={newsForm.image_url} onChange={e=>setNewsForm({...newsForm, image_url: e.target.value})} />
-            <div className="flex gap-3">
-              <button onClick={handleSave} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1">Simpan</button>
+            <div className="space-y-3">
+              <input type="text" placeholder="Judul" className="w-full p-2 rounded bg-black/50 border border-white/20" value={newsForm.title} onChange={e=>setNewsForm({...newsForm, title: e.target.value})} />
+              <input type="text" placeholder="Excerpt (ringkasan singkat)" className="w-full p-2 rounded bg-black/50 border border-white/20" value={newsForm.excerpt} onChange={e=>setNewsForm({...newsForm, excerpt: e.target.value})} />
+              <textarea placeholder="Konten lengkap" className="w-full p-2 rounded bg-black/50 border border-white/20" rows="3" value={newsForm.content} onChange={e=>setNewsForm({...newsForm, content: e.target.value})} />
+              
+              {/* ===== GAMBAR + TOMBOL PILIH DARI GALERI ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL Gambar (opsional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 p-2 rounded bg-black/50 border border-white/20" 
+                    placeholder="https://..."
+                    value={newsForm.image_url}
+                    onChange={e => setNewsForm({...newsForm, image_url: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMediaGallery(true)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih dari Galeri
+                  </button>
+                </div>
+                {newsForm.image_url && (
+                  <img src={newsForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleSave} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button>
               <button onClick={() => setShowModal(false)} className="bg-gray-700 px-4 py-2 rounded-full">Batal</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY ===== */}
+      {showMediaGallery && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">Pilih Gambar</h2>
+              <button onClick={() => setShowMediaGallery(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes="image"
+              onSelect={handleMediaSelect}
+            />
           </div>
         </div>
       )}

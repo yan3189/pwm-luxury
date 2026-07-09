@@ -1,15 +1,19 @@
 // ========== FILE: src/pages/AdminEvents.jsx ==========
-// Halaman manajemen event (full CRUD dengan tabel)
+// Halaman manajemen event (full CRUD dengan tabel + Media Gallery)
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, MapPin, Clock, Trash2, Edit, Plus } from 'lucide-react'
+import { Calendar, MapPin, Clock, Trash2, Edit, Plus, X } from 'lucide-react'
+import MediaGallery from '../components/MediaGallery'
+import { markMediaAsUsed, unmarkMediaByEntity } from '../services/mediaService'
 
 export default function AdminEvents() {
   const [store, setStore] = useState(null)
+  const [user, setUser] = useState(null)
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showMediaGallery, setShowMediaGallery] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
   const [eventForm, setEventForm] = useState({
     title: '',
@@ -31,6 +35,8 @@ export default function AdminEvents() {
       navigate('/admin/login')
       return
     }
+    setUser(user)
+
     const { data: userData } = await supabase
       .from('users')
       .select('store_id')
@@ -80,8 +86,30 @@ export default function AdminEvents() {
     setShowModal(true)
   }
 
+  // ============================================================
+  // HANDLE PILIH GAMBAR DARI GALERI
+  // ============================================================
+  const handleMediaSelect = (url, selectedMedia) => {
+    setEventForm({ ...eventForm, image_url: url })
+    
+    // Tandai media sebagai used (jika event sudah punya ID)
+    if (selectedMedia && selectedMedia.length > 0 && editingEvent?.id) {
+      markMediaAsUsed(
+        selectedMedia.map(m => m.id),
+        { 
+          type: 'event', 
+          id: editingEvent.id, 
+          name: eventForm.title || 'Event Baru' 
+        }
+      ).catch(err => console.error('Error marking media:', err))
+    }
+    
+    setShowMediaGallery(false)
+  }
+
   const handleSave = async () => {
     if (!store) return
+    
     const eventData = {
       store_id: store.id,
       title: eventForm.title,
@@ -92,31 +120,92 @@ export default function AdminEvents() {
       image_url: eventForm.image_url || null
     }
 
+    let eventId = editingEvent?.id
+
     if (editingEvent) {
       const { error } = await supabase
         .from('events')
         .update(eventData)
         .eq('id', editingEvent.id)
-      if (error) alert('Gagal update: ' + error.message)
+      if (error) {
+        alert('Gagal update: ' + error.message)
+        return
+      }
+      eventId = editingEvent.id
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('events')
         .insert([eventData])
-      if (error) alert('Gagal tambah: ' + error.message)
+        .select()
+      if (error) {
+        alert('Gagal tambah: ' + error.message)
+        return
+      }
+      eventId = data[0]?.id
     }
+
+    // ============================================================
+    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
+    // ============================================================
+    if (eventForm.image_url && eventId) {
+      try {
+        const { data: mediaData } = await supabase
+          .from('media_library')
+          .select('id')
+          .eq('file_url', eventForm.image_url)
+          .maybeSingle()
+        
+        if (mediaData) {
+          await markMediaAsUsed(
+            [mediaData.id],
+            { 
+              type: 'event', 
+              id: eventId, 
+              name: eventForm.title || 'Event' 
+            }
+          )
+          console.log('✅ Media marked as used for event:', eventId)
+        }
+      } catch (err) {
+        console.error('Error marking media as used:', err)
+      }
+    }
+
     setShowModal(false)
     fetchStoreAndEvents(store.id)
   }
 
   const handleDelete = async (eventId) => {
-    if (confirm('Yakin hapus event ini?')) {
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', eventId)
-      if (error) alert('Gagal hapus: ' + error.message)
-      else fetchStoreAndEvents(store.id)
+    if (!confirm('Yakin hapus event ini?')) return
+
+    // Ambil data event sebelum dihapus (untuk unmark media)
+    const { data: eventData } = await supabase
+      .from('events')
+      .select('image_url, title')
+      .eq('id', eventId)
+      .single()
+
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId)
+    
+    if (error) {
+      alert('Gagal hapus: ' + error.message)
+      return
     }
+
+    // Unmark media
+    if (eventData?.image_url) {
+      try {
+        await unmarkMediaByEntity(eventId, 'event')
+        console.log('✅ Media unmarked for event:', eventId)
+      } catch (err) {
+        console.error('Error unmarking media:', err)
+      }
+    }
+
+    fetchStoreAndEvents(store.id)
   }
 
   const formatDate = (dateStr) => {
@@ -169,7 +258,7 @@ export default function AdminEvents() {
         </div>
       </div>
 
-      {/* MODAL TAMBAH/EDIT EVENT */}
+      {/* ===== MODAL TAMBAH/EDIT EVENT ===== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
@@ -180,12 +269,57 @@ export default function AdminEvents() {
               <input type="date" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} />
               <input type="time" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.time} onChange={e => setEventForm({...eventForm, time: e.target.value})} />
               <input type="text" placeholder="Lokasi (opsional)" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.location} onChange={e => setEventForm({...eventForm, location: e.target.value})} />
-              <input type="text" placeholder="URL gambar (opsional)" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.image_url} onChange={e => setEventForm({...eventForm, image_url: e.target.value})} />
+              
+              {/* ===== GAMBAR + TOMBOL PILIH DARI GALERI ===== */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL Gambar (opsional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    className="flex-1 p-2 rounded bg-black/50 border border-white/20" 
+                    placeholder="https://..."
+                    value={eventForm.image_url}
+                    onChange={e => setEventForm({...eventForm, image_url: e.target.value})}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMediaGallery(true)}
+                    className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
+                  >
+                    🖼️ Pilih dari Galeri
+                  </button>
+                </div>
+                {eventForm.image_url && (
+                  <img src={eventForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
+                )}
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={handleSave} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button>
               <button onClick={() => setShowModal(false)} className="bg-gray-700 px-4 py-2 rounded-full">Batal</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MODAL MEDIA GALLERY ===== */}
+      {showMediaGallery && (
+        <div className="fixed inset-0 bg-black/80 z-50 p-4 overflow-y-auto">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-display text-white">Pilih Gambar</h2>
+              <button onClick={() => setShowMediaGallery(false)} className="text-gray-400 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+            <MediaGallery
+              storeId={store?.id}
+              userId={user?.id}
+              selectable={true}
+              maxSelect={1}
+              allowedTypes="image"
+              onSelect={handleMediaSelect}
+            />
           </div>
         </div>
       )}
