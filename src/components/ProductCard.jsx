@@ -76,19 +76,21 @@ export default function ProductCard({
         </div>
 
         {/* ===== HOVER ADD TO CART BUTTON ===== */}
-        {onAddToCart && product.stock > 0 && (
-                    <button
-            onClick={() => {
-              onAddToCart(product);
-              // Trigger animasi floating cart
-              window.dispatchEvent(new CustomEvent('cart-animate'));
-            }}
-            className="absolute bottom-2 right-2 bg-yellow-500 text-black p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110 hover:bg-yellow-400"
-            title="Tambah ke keranjang"
-          >
-            <Plus size={16} />
-          </button>
-        )}
+       {onAddToCart && product.stock > 0 && (
+  <button
+    onClick={() => {
+      onAddToCart(product);
+      window.dispatchEvent(new CustomEvent('cart-animate'));
+    }}
+    className="absolute bottom-2 right-2 bg-yellow-500 text-black p-2 rounded-full 
+      opacity-100 md:opacity-0 group-hover:opacity-100 
+      transition-all duration-300 hover:scale-110 hover:bg-yellow-400
+      shadow-lg shadow-yellow-500/30 md:shadow-none"
+    title="Tambah ke keranjang"
+  >
+    <Plus size={16} />
+  </button>
+)}
       </div>
 
       {/* ===== INFO ===== */}
