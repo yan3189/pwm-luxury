@@ -116,23 +116,7 @@ export default function AdminMedia() {
           </div>
         </div>
 
-        {/* Store Selector (Super Admin) */}
-        {userRole === 'super_admin' && storeList.length > 1 && (
-          <div className="bg-gray-900/50 rounded-xl p-4 border border-white/10 mb-6">
-            <label className="block text-sm text-gray-400 mb-2 flex items-center gap-2">
-              <Store size={16} /> Pilih Store:
-            </label>
-            <select
-              value={selectedStoreId || ''}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
-              className="bg-black/50 border border-white/20 rounded-lg px-3 py-2 w-full md:w-64"
-            >
-              {storeList.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        
 
         {/* Media Gallery */}
         <MediaGallery

@@ -39,11 +39,11 @@ export default function MediaGallery({
 
   // Load media saat filter berubah
   useEffect(() => {
-    if (storeId) {
+    
       loadMedia();
       loadStats();
-    }
-  }, [storeId, search, filterType, filterUsed]);
+    
+  }, [search, filterType, filterUsed]);
 
   const loadMedia = async () => {
     setLoading(true);
