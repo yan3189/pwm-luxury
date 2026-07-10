@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar';
 import FloatingCart from '../components/FloatingCart';
 import { ArrowLeft, ShoppingBag, Star, CheckCircle, Video, Store } from 'lucide-react';
 import { addToCart as addToCartService } from '../services/cartService';
+import { interpretDiscount, getDiscountLabel } from '../utils/priceUtils';
 
 export default function ProductDetailPage() {
   const { productId } = useParams();
@@ -89,10 +90,15 @@ export default function ProductDetailPage() {
   };
 
   // Hitung harga diskon
-  const hasDiscount = product?.has_discount && product?.discount_percentage > 0;
-  const discountedPrice = hasDiscount 
-    ? Math.round(product.price * (100 - product.discount_percentage) / 100)
-    : product?.price || 0;
+  // ============================================================
+// DI DALAM KOMPONEN
+// ============================================================
+const hasDiscount = product?.has_discount && product?.discount_value > 0;
+const discountInfo = interpretDiscount(
+  product?.price || 0,
+  product?.has_discount,
+  product?.discount_value
+);
 
   if (loading) {
     return (
@@ -166,26 +172,30 @@ export default function ProductDetailPage() {
             {/* Nama produk */}
             <h1 className="text-3xl md:text-4xl font-display font-bold">{product.name}</h1>
 
-            {/* Harga */}
-            <div className="mt-4">
-              {hasDiscount ? (
-                <div>
-                  <span className="text-3xl font-bold text-yellow-500">
-                    Rp {discountedPrice.toLocaleString()}
-                  </span>
-                  <span className="text-gray-500 text-lg line-through ml-3">
-                    Rp {product.price.toLocaleString()}
-                  </span>
-                  <span className="ml-2 text-sm text-red-400 bg-red-500/20 px-2 py-0.5 rounded-full">
-                    {product.discount_percentage}% OFF
-                  </span>
-                </div>
-              ) : (
-                <span className="text-3xl font-bold text-yellow-500">
-                  Rp {product.price.toLocaleString()}
-                </span>
-              )}
-            </div>
+            {/* ===== TAMPILAN HARGA ===== */}
+<div className="mt-4">
+  {hasDiscount ? (
+    <div>
+      <span className="text-3xl font-bold text-yellow-500">
+        Rp {discountInfo.finalPrice.toLocaleString()}
+      </span>
+      <span className="text-gray-500 text-lg line-through ml-3">
+        Rp {product.price.toLocaleString()}
+      </span>
+      <span className={`ml-2 text-sm font-medium px-2 py-0.5 rounded-full ${
+        discountInfo.type === 'percentage' 
+          ? 'bg-red-500/20 text-red-400' 
+          : 'bg-blue-500/20 text-blue-400'
+      }`}>
+        {discountInfo.display}
+      </span>
+    </div>
+  ) : (
+    <span className="text-3xl font-bold text-yellow-500">
+      Rp {product.price.toLocaleString()}
+    </span>
+  )}
+</div>
 
             {/* Stok */}
             <div className="mt-2">

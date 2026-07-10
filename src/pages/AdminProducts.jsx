@@ -1,21 +1,32 @@
 // ========== FILE: src/pages/AdminProducts.jsx ==========
-// Halaman manajemen produk dengan kategori, diskon, favorit, upsell, dan media gallery
+// Halaman manajemen produk dengan kategori, diskon (persen & nominal), favorit, upsell
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { Package, Edit, Trash2, Plus, Percent, Star, ShoppingBag, X } from 'lucide-react'
 import MediaGallery from '../components/MediaGallery'
 import { markMediaAsUsed, unmarkMediaAsUsed } from '../services/mediaService'
+import { 
+  interpretDiscount, 
+  calculateDiscountedPrice, 
+  getDiscountLabel,
+  validateDiscountInput,
+  formatDiscountForTable
+} from '../utils/priceUtils'
 
 export default function AdminProducts() {
   const [store, setStore] = useState(null)
-  const [user, setUser] = useState(null) // ← TAMBAHKAN
+  const [user, setUser] = useState(null)
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showMediaGallery, setShowMediaGallery] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
+  
+  // ============================================================
+  // FORM STATE
+  // ============================================================
   const [productForm, setProductForm] = useState({
     name: '',
     price: '',
@@ -24,10 +35,13 @@ export default function AdminProducts() {
     description: '',
     category_id: '',
     has_discount: false,
-    discount_percentage: '',
+    discount_type: 'percentage', // 'percentage' | 'nominal' ← BARU
+    discount_value: '',           // ← BARU (ganti discount_percentage)
     is_featured: false,
-    is_upsell: false
+    is_upsell: false,
+    video_url: ''                 // ← BARU (opsional)
   })
+  const [discountError, setDiscountError] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -40,7 +54,7 @@ export default function AdminProducts() {
       navigate('/admin/login')
       return
     }
-    setUser(user) // ← SIMPAN USER
+    setUser(user)
 
     const { data: userData } = await supabase
       .from('users')
@@ -111,14 +125,23 @@ export default function AdminProducts() {
       description: '',
       category_id: '',
       has_discount: false,
-      discount_percentage: '',
+      discount_type: 'percentage',
+      discount_value: '',
       is_featured: false,
-      is_upsell: false
+      is_upsell: false,
+      video_url: ''
     })
+    setDiscountError('')
     setShowModal(true)
   }
 
   const openEditModal = (product) => {
+    // Tentukan tipe diskon dari nilai yang ada
+    let discountType = 'percentage'
+    if (product.has_discount && product.discount_value > 100) {
+      discountType = 'nominal'
+    }
+
     setEditingProduct(product)
     setProductForm({
       name: product.name,
@@ -128,26 +151,85 @@ export default function AdminProducts() {
       description: product.description || '',
       category_id: product.category_id || '',
       has_discount: product.has_discount || false,
-      discount_percentage: product.discount_percentage || '',
+      discount_type: discountType,
+      discount_value: product.discount_value || '',
       is_featured: product.is_featured || false,
-      is_upsell: product.is_upsell || false
+      is_upsell: product.is_upsell || false,
+      video_url: product.video_url || ''
     })
+    setDiscountError('')
     setShowModal(true)
   }
 
+  // ============================================================
+  // VALIDASI DISKON
+  // ============================================================
+  const validateDiscount = () => {
+    if (!productForm.has_discount) {
+      setDiscountError('')
+      return true
+    }
+
+    const value = parseFloat(productForm.discount_value)
+    if (!value || value <= 0) {
+      setDiscountError('Nilai diskon harus lebih dari 0')
+      return false
+    }
+
+    const price = parseInt(productForm.price) || 0
+    
+    if (productForm.discount_type === 'percentage') {
+      if (value > 100) {
+        setDiscountError('Diskon persen maksimal 100%')
+        return false
+      }
+      if (value < 1) {
+        setDiscountError('Diskon persen minimal 1%')
+        return false
+      }
+    } else {
+      if (value < 500) {
+        setDiscountError('Diskon nominal minimal Rp 500')
+        return false
+      }
+      if (value > price && price > 0) {
+        setDiscountError(`Diskon tidak boleh melebihi harga produk (Rp ${price.toLocaleString()})`)
+        return false
+      }
+    }
+
+    setDiscountError('')
+    return true
+  }
+
+  // ============================================================
+  // HANDLE SAVE
+  // ============================================================
   const handleSave = async () => {
     if (!store) return
     
+    // Validasi diskon
+    if (!validateDiscount()) {
+      return
+    }
+
+    // Hitung discount_value yang akan disimpan
+    let discountValue = 0
+    if (productForm.has_discount && productForm.discount_value) {
+      discountValue = parseFloat(productForm.discount_value)
+    }
+
     const productData = {
       store_id: store.id,
       name: productForm.name,
       price: parseInt(productForm.price),
       stock: parseInt(productForm.stock) || 0,
       image_url: productForm.image_url,
+      video_url: productForm.video_url || null,
       description: productForm.description,
       category_id: productForm.category_id || null,
       has_discount: productForm.has_discount,
-      discount_percentage: productForm.has_discount ? parseInt(productForm.discount_percentage) || 0 : 0,
+      discount_value: discountValue, // ← PAKAI discount_value
       is_featured: productForm.is_featured,
       is_upsell: productForm.is_upsell || false
     }
@@ -155,7 +237,6 @@ export default function AdminProducts() {
     let productId = editingProduct?.id
 
     if (editingProduct) {
-      // UPDATE
       const { error } = await supabase
         .from('products')
         .update(productData)
@@ -166,7 +247,6 @@ export default function AdminProducts() {
       }
       productId = editingProduct.id
     } else {
-      // CREATE
       const { data, error } = await supabase
         .from('products')
         .insert([productData])
@@ -178,12 +258,9 @@ export default function AdminProducts() {
       productId = data[0]?.id
     }
 
-    // ============================================================
-    // TANDAI MEDIA SEBAGAI USED (JIKA ADA GAMBAR)
-    // ============================================================
+    // Tandai media sebagai used (jika ada gambar)
     if (productForm.image_url && productId) {
       try {
-        // Cari media di media_library berdasarkan URL
         const { data: mediaData } = await supabase
           .from('media_library')
           .select('id')
@@ -199,11 +276,9 @@ export default function AdminProducts() {
               name: productForm.name || 'Produk' 
             }
           )
-          console.log('✅ Media marked as used:', mediaData.id)
         }
       } catch (err) {
-        console.error('Error marking media as used:', err)
-        // Tidak perlu alert, biarkan proses lanjut
+        console.error('Error marking media:', err)
       }
     }
 
@@ -214,16 +289,12 @@ export default function AdminProducts() {
   const handleDelete = async (productId) => {
     if (!confirm('Yakin hapus produk ini?')) return
 
-    // ============================================================
-    // AMBIL DATA PRODUK SEBELUM DIHAPUS (UNTUK UNMARK MEDIA)
-    // ============================================================
     const { data: productData } = await supabase
       .from('products')
       .select('image_url, name')
       .eq('id', productId)
       .single()
 
-    // Hapus produk
     const { error } = await supabase
       .from('products')
       .delete()
@@ -234,24 +305,12 @@ export default function AdminProducts() {
       return
     }
 
-    // ============================================================
-    // UNMARK MEDIA (JIKA ADA GAMBAR)
-    // ============================================================
     if (productData?.image_url) {
       try {
-        const { data: mediaData } = await supabase
-          .from('media_library')
-          .select('id')
-          .eq('file_url', productData.image_url)
-          .maybeSingle()
-        
-        if (mediaData) {
-          await unmarkMediaAsUsed(
-            [mediaData.id],
-            { type: 'product', id: productId }
-          )
-          console.log('✅ Media unmarked:', mediaData.id)
-        }
+        await unmarkMediaAsUsed(
+          [productData.id],
+          { type: 'product', id: productId }
+        )
       } catch (err) {
         console.error('Error unmarking media:', err)
       }
@@ -269,30 +328,17 @@ export default function AdminProducts() {
     else fetchStoreAndProducts(store.id)
   }
 
-  const getDiscountedPrice = (price, discountPercentage) => {
-    if (!discountPercentage || discountPercentage === 0) return price
-    return Math.round(price * (100 - discountPercentage) / 100)
-  }
-
-  // Handler untuk pilih gambar dari MediaGallery
+  // ============================================================
+  // HANDLE MEDIA SELECT (DARI GALERI)
+  // ============================================================
   const handleMediaSelect = (url, selectedMedia) => {
     setProductForm({ ...productForm, image_url: url })
-    
-    // Tandai media sebagai used
-    if (selectedMedia && selectedMedia.length > 0 && editingProduct?.id) {
-      markMediaAsUsed(
-        selectedMedia.map(m => m.id),
-        { 
-          type: 'product', 
-          id: editingProduct.id, 
-          name: productForm.name || 'Produk' 
-        }
-      ).catch(err => console.error('Error marking media:', err))
-    }
-    
     setShowMediaGallery(false)
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Loading...</div>
   if (!store) return <div className="bg-black min-h-screen text-white p-8">Store tidak ditemukan</div>
 
@@ -319,6 +365,7 @@ export default function AdminProducts() {
                   <th className="p-3">Kategori</th>
                   <th className="p-3">Harga</th>
                   <th className="p-3">Stok</th>
+                  <th className="p-3">Diskon</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Upsell</th>
                   <th className="p-3">Aksi</th>
@@ -326,8 +373,12 @@ export default function AdminProducts() {
               </thead>
               <tbody>
                 {products.map(p => {
-                  const discountedPrice = getDiscountedPrice(p.price, p.discount_percentage)
-                  const hasActiveDiscount = p.has_discount && p.discount_percentage > 0
+                  // ============================================================
+                  // HITUNG DISKON DENGAN priceUtils
+                  // ============================================================
+                  const hasDiscount = p.has_discount && p.discount_value > 0
+                  const discountInfo = interpretDiscount(p.price, p.has_discount, p.discount_value)
+                  const discountLabel = formatDiscountForTable(p.price, p.has_discount, p.discount_value)
                   
                   return (
                     <tr key={p.id} className="border-b border-white/5 hover:bg-white/5">
@@ -343,9 +394,9 @@ export default function AdminProducts() {
                         {categories.find(c => c.id === p.category_id)?.name || '-'}
                       </td>
                       <td className="p-3">
-                        {hasActiveDiscount ? (
+                        {hasDiscount ? (
                           <div>
-                            <span className="text-yellow-500 font-semibold">Rp {discountedPrice.toLocaleString()}</span>
+                            <span className="text-yellow-500 font-semibold">Rp {discountInfo.finalPrice.toLocaleString()}</span>
                             <span className="text-gray-400 text-xs line-through ml-2">Rp {p.price.toLocaleString()}</span>
                           </div>
                         ) : (
@@ -354,10 +405,27 @@ export default function AdminProducts() {
                       </td>
                       <td className="p-3">{p.stock}</td>
                       <td className="p-3">
+                        {hasDiscount ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            discountInfo.type === 'percentage' 
+                              ? 'bg-red-500/20 text-red-400' 
+                              : 'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {discountLabel}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="p-3">
                         <div className="flex flex-wrap gap-1">
-                          {hasActiveDiscount && (
-                            <span className="bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <Percent size={10} /> Diskon {p.discount_percentage}%
+                          {hasDiscount && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              discountInfo.type === 'percentage' 
+                                ? 'bg-red-500/20 text-red-400' 
+                                : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {discountInfo.type === 'percentage' ? '💯 %' : '💰 Rp'}
                             </span>
                           )}
                           {p.is_featured && (
@@ -365,7 +433,7 @@ export default function AdminProducts() {
                               <Star size={10} /> Favorit
                             </span>
                           )}
-                          {!hasActiveDiscount && !p.is_featured && (
+                          {!hasDiscount && !p.is_featured && (
                             <span className="text-gray-500 text-xs">-</span>
                           )}
                         </div>
@@ -379,13 +447,7 @@ export default function AdminProducts() {
                               : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'
                           }`}
                         >
-                          {p.is_upsell ? (
-                            <span className="flex items-center gap-1">
-                              <ShoppingBag size={12} /> Upsell
-                            </span>
-                          ) : (
-                            'Tandai Upsell'
-                          )}
+                          {p.is_upsell ? '✅ Upsell' : 'Tandai Upsell'}
                         </button>
                       </td>
                       <td className="p-3 flex gap-2">
@@ -397,11 +459,11 @@ export default function AdminProducts() {
                         </button>
                       </td>
                     </tr>
-                  )}
-                )}
+                  )
+                })}
                 {products.length === 0 && (
                   <tr>
-                    <td colSpan="8" className="p-3 text-center text-gray-500">Belum ada produk</td>
+                    <td colSpan="9" className="p-3 text-center text-gray-500">Belum ada produk</td>
                   </tr>
                 )}
               </tbody>
@@ -419,7 +481,7 @@ export default function AdminProducts() {
             <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
               {/* Nama Produk */}
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Nama Produk</label>
+                <label className="block text-sm text-gray-400 mb-1">Nama Produk *</label>
                 <input 
                   type="text" 
                   className="w-full p-2 rounded bg-black/50 border border-white/20" 
@@ -441,11 +503,6 @@ export default function AdminProducts() {
                     <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
-                {categories.length === 0 && (
-                  <p className="text-yellow-500 text-xs mt-1">
-                    Belum ada kategori yang diaktifkan. Silakan atur di menu "Atur Kategori Store"
-                  </p>
-                )}
               </div>
 
               {/* Harga */}
@@ -470,35 +527,77 @@ export default function AdminProducts() {
                 />
               </div>
 
-              {/* Diskon */}
-              <div className="flex items-center gap-3">
-                <input 
-                  type="checkbox" 
-                  id="has_discount"
-                  checked={productForm.has_discount}
-                  onChange={e => setProductForm({...productForm, has_discount: e.target.checked})}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="has_discount" className="text-sm text-gray-300">Produk Diskon</label>
-              </div>
-
-              {productForm.has_discount && (
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Persentase Diskon (%)</label>
+              {/* ============================================================
+                  DISKON - DENGAN DROPDOWN & VALIDASI
+                  ============================================================ */}
+              <div className="border-t border-white/10 pt-3">
+                <div className="flex items-center gap-3 mb-2">
                   <input 
-                    type="number" 
-                    className="w-full p-2 rounded bg-black/50 border border-white/20" 
-                    placeholder="10"
-                    value={productForm.discount_percentage}
-                    onChange={e => setProductForm({...productForm, discount_percentage: e.target.value})}
+                    type="checkbox" 
+                    id="has_discount"
+                    checked={productForm.has_discount}
+                    onChange={e => setProductForm({...productForm, has_discount: e.target.checked})}
+                    className="w-4 h-4"
                   />
-                  {productForm.price && productForm.discount_percentage && (
-                    <p className="text-green-500 text-xs mt-1">
-                      Setelah diskon: Rp {Math.round(productForm.price * (100 - productForm.discount_percentage) / 100).toLocaleString()}
-                    </p>
-                  )}
+                  <label htmlFor="has_discount" className="text-sm text-gray-300">Produk Diskon</label>
                 </div>
-              )}
+
+                {productForm.has_discount && (
+                  <div className="space-y-3 bg-gray-800/30 p-3 rounded-lg">
+                    {/* Tipe Diskon */}
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">Jenis Diskon</label>
+                      <select 
+                        className="w-full p-2 rounded bg-black/50 border border-white/20"
+                        value={productForm.discount_type}
+                        onChange={e => {
+                          setProductForm({...productForm, discount_type: e.target.value})
+                          setDiscountError('')
+                        }}
+                      >
+                        <option value="percentage">Persen (%)</option>
+                        <option value="nominal">Nominal (Rp)</option>
+                      </select>
+                    </div>
+
+                    {/* Nilai Diskon */}
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-1">
+                        {productForm.discount_type === 'percentage' 
+                          ? 'Nilai Diskon (%)' 
+                          : 'Nilai Diskon (Rp)'}
+                      </label>
+                      <input 
+                        type="number" 
+                        className={`w-full p-2 rounded bg-black/50 border ${discountError ? 'border-red-500' : 'border-white/20'} focus:border-yellow-500 focus:outline-none`}
+                        placeholder={productForm.discount_type === 'percentage' ? '10' : '15000'}
+                        value={productForm.discount_value}
+                        onChange={e => {
+                          setProductForm({...productForm, discount_value: e.target.value})
+                          setDiscountError('')
+                        }}
+                        onBlur={validateDiscount}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {productForm.discount_type === 'percentage' 
+                          ? '💡 Masukkan angka 1-100 untuk diskon persen' 
+                          : '💡 Minimal Rp 500 untuk diskon nominal'}
+                      </p>
+                      {discountError && (
+                        <p className="text-xs text-red-400 mt-1">{discountError}</p>
+                      )}
+                      {productForm.price && productForm.has_discount && productForm.discount_value && !discountError && (
+                        <p className="text-green-500 text-xs mt-1">
+                          {productForm.discount_type === 'percentage' 
+                            ? `✅ Harga setelah diskon: Rp ${Math.round(productForm.price * (1 - productForm.discount_value / 100)).toLocaleString()}`
+                            : `✅ Harga setelah diskon: Rp ${Math.max(0, productForm.price - productForm.discount_value).toLocaleString()}`
+                          }
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Favorit */}
               <div className="flex items-center gap-3">
@@ -540,12 +639,24 @@ export default function AdminProducts() {
                     onClick={() => setShowMediaGallery(true)}
                     className="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg text-sm transition whitespace-nowrap"
                   >
-                    🖼️ Pilih dari Galeri
+                    🖼️ Pilih
                   </button>
                 </div>
                 {productForm.image_url && (
                   <img src={productForm.image_url} className="h-16 w-16 object-cover rounded mt-2" alt="preview" />
                 )}
+              </div>
+
+              {/* Video (opsional) */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">URL Video (opsional)</label>
+                <input 
+                  type="text" 
+                  className="w-full p-2 rounded bg-black/50 border border-white/20" 
+                  placeholder="https://..."
+                  value={productForm.video_url}
+                  onChange={e => setProductForm({...productForm, video_url: e.target.value})}
+                />
               </div>
 
               {/* Deskripsi */}

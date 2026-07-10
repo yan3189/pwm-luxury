@@ -317,25 +317,25 @@ export default function StorePage() {
   }
 
   // ============================================================
-  // 12. RENDER PRODUK
-  // ============================================================
-  const renderProducts = (productsToRender) => {
-    if (!productsToRender || productsToRender.length === 0) {
-      return <div className="text-center text-gray-500 py-12">Belum ada produk.</div>
-    }
-
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-        {productsToRender.map(p => (
-          <ProductCard
-            key={p.id}
-            product={p}
-            onAddToCart={handleAddToCart}
-          />
-        ))}
-      </div>
-    )
+// RENDER PRODUK (DENGAN PRODUCT CARD)
+// ============================================================
+const renderProducts = (productsToRender) => {
+  if (!productsToRender || productsToRender.length === 0) {
+    return <div className="text-center text-gray-500 py-12">Belum ada produk.</div>;
   }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+      {productsToRender.map(p => (
+        <ProductCard
+          key={p.id}
+          product={p}
+          onAddToCart={handleAddToCart}
+        />
+      ))}
+    </div>
+  );
+}
 
   // ============================================================
 // RENDER ARTIKEL & EVENT (DENGAN LINK KE DETAIL)
