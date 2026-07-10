@@ -97,9 +97,7 @@ export async function uploadMediaFiles(files, storeId, userId, onProgress = null
   if (!files || files.length === 0) {
     throw new Error('Tidak ada file yang dipilih');
   }
-  if (!storeId) {
-    throw new Error('Store ID tidak ditemukan');
-  }
+    const finalStoreId = storeId || null;
   if (!userId) {
     throw new Error('User ID tidak ditemukan');
   }
@@ -166,7 +164,7 @@ export async function uploadMediaFiles(files, storeId, userId, onProgress = null
       const { data: metaData, error: metaError } = await supabase
         .from('media_library')
         .insert({
-          store_id: storeId,
+          store_id: finalStoreId,
           file_name: file.name || 'unknown_file',
           file_path: filePath,
           file_url: publicUrl,

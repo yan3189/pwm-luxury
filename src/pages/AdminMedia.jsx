@@ -120,7 +120,7 @@ export default function AdminMedia() {
 
         {/* Media Gallery */}
         <MediaGallery
-            storeId={null}  
+          storeId={selectedStoreId || null} 
           userId={user?.id}
           selectable={false}
           allowedTypes="all"
