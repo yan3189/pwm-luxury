@@ -110,7 +110,7 @@ export default function AdminMedia() {
             <p className="text-gray-400 text-sm">
               {userRole === 'super_admin' 
                 ? 'Super Admin: Kelola semua media store' 
-                : `Store: ${store?.name || 'Loading...'}`
+                : `Store Admin: Kelola semua media (global)`
               }
             </p>
           </div>
@@ -136,7 +136,7 @@ export default function AdminMedia() {
 
         {/* Media Gallery */}
         <MediaGallery
-          storeId={selectedStoreId}
+            storeId={null}  
           userId={user?.id}
           selectable={false}
           allowedTypes="all"

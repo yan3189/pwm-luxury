@@ -10,7 +10,7 @@ export default function SuperAdminCategories() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [categoryForm, setCategoryForm] = useState({ name: '', sort_order: 0 });
+  const [categoryForm, setCategoryForm] = useState({ name: '', initial: '',sort_order: 0 });
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
 
@@ -63,7 +63,7 @@ export default function SuperAdminCategories() {
 
   const openEditModal = (category) => {
     setEditingCategory(category);
-    setCategoryForm({ name: category.name, sort_order: category.sort_order });
+    setCategoryForm({ name: category.name, initial: category.initial || '', sort_order: category.sort_order });
     setShowModal(true);
   };
 
@@ -81,6 +81,7 @@ export default function SuperAdminCategories() {
         .from('master_categories')
         .update({
           name: categoryForm.name,
+          initial: categoryForm.initial || null,
           sort_order: categoryForm.sort_order
         })
         .eq('id', editingCategory.id);
@@ -96,6 +97,7 @@ export default function SuperAdminCategories() {
         .from('master_categories')
         .insert([{
           name: categoryForm.name,
+          initial: categoryForm.initial || null,
           sort_order: categoryForm.sort_order
         }]);
       
@@ -240,6 +242,7 @@ export default function SuperAdminCategories() {
               <tr>
                 <th className="p-3 w-20">No. Urut</th>
                 <th className="p-3">Nama Kategori</th>
+                <th className="p-3">Inisial</th>
                 <th className="p-3">Dibuat</th>
                 <th className="p-3 w-48">Aksi</th>
               </tr>
@@ -251,6 +254,7 @@ export default function SuperAdminCategories() {
                     {cat.sort_order}
                   </td>
                   <td className="p-3 font-medium">{cat.name}</td>
+                  <td className="p-3 font-mono text-xs">{cat.initial || '-'}</td>
                   <td className="p-3 text-sm text-gray-400">
                     {new Date(cat.created_at).toLocaleDateString('id-ID')}
                   </td>
@@ -320,17 +324,27 @@ export default function SuperAdminCategories() {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Nama Kategori</label>
-                <input 
-                  type="text" 
-                  className="w-full p-2 rounded bg-black/50 border border-white/20" 
-                  value={categoryForm.name}
-                  onChange={e => setCategoryForm({...categoryForm, name: e.target.value})}
-                  placeholder="Contoh: Makanan, Minuman, Merchandise"
-                  autoFocus
-                />
-              </div>
-              
+  <label className="block text-sm text-gray-400 mb-1">Nama Kategori</label>
+  <input 
+    type="text" 
+    className="w-full p-2 rounded bg-black/50 border border-white/20" 
+    value={categoryForm.name} 
+    onChange={e => setCategoryForm({...categoryForm, name: e.target.value})} 
+  />
+</div>
+
+{/* ===== INITIAL KATEGORI ===== */}
+<div>
+  <label className="block text-sm text-gray-400 mb-1">Initial Kategori (opsional)</label>
+  <input 
+    type="text" 
+    className="w-full p-2 rounded bg-black/50 border border-white/20" 
+    placeholder="Contoh: KOP untuk Kopi, TEA untuk Teh"
+    value={categoryForm.initial || ''} 
+    onChange={e => setCategoryForm({...categoryForm, initial: e.target.value.toUpperCase()})} 
+  />
+  <p className="text-xs text-gray-500 mt-1">Digunakan untuk auto-generate product code.</p>
+</div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Nomor Urut</label>
                 <input 

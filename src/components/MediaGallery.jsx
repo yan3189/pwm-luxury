@@ -54,7 +54,7 @@ export default function MediaGallery({
         type: filterType,
         isUsed: filterUsed === 'all' ? undefined : filterUsed === 'used'
       };
-      const data = await getMediaLibrary(storeId, filter);
+      const data = await getMediaLibrary(null, filter);
       setMedia(data);
     } catch (err) {
       console.error('Error loading media:', err);
@@ -66,7 +66,7 @@ export default function MediaGallery({
 
   const loadStats = async () => {
     try {
-      const data = await getMediaStats(storeId);
+      const data = await getMediaStats(null);
       setStats(data);
     } catch (err) {
       console.error('Error loading stats:', err);

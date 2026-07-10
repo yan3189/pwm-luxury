@@ -218,21 +218,18 @@ export async function uploadMediaFiles(files, storeId, userId, onProgress = null
 // ============================================================
 
 /**
- * Ambil daftar media berdasarkan store
- * @param {string} storeId - ID store
- * @param {Object} filter - Filter (search, isUsed)
+ * Ambil daftar media (SEMUA media untuk admin, tidak dibatasi store)
+ * @param {string} storeId - ID store (DIABAIKAN, semua admin bisa lihat semua)
+ * @param {Object} filter - Filter (search, isUsed, type)
  * @returns {Promise<Array>} Array media
  */
 export async function getMediaLibrary(storeId, filter = {}) {
-  if (!storeId) {
-    throw new Error('Store ID tidak ditemukan');
-  }
-
   let query = supabase
     .from('media_library')
     .select('*')
-    .eq('store_id', storeId)
     .order('created_at', { ascending: false });
+
+  // ✅ TIDAK ADA FILTER store_id - SEMUA MEDIA TAMPIL
 
   // Filter by usage status
   if (filter.isUsed !== undefined && filter.isUsed !== null) {
@@ -616,19 +613,14 @@ export async function markMediaAsUsedByUrl(fileUrl, usedBy) {
 // ============================================================
 
 /**
- * Dapatkan statistik media untuk store
- * @param {string} storeId - ID store
+ * Dapatkan statistik media (SEMUA media, tidak dibatasi store)
+ * @param {string} storeId - ID store (DIABAIKAN)
  * @returns {Promise<Object>} { total, used, unused, totalSize }
  */
 export async function getMediaStats(storeId) {
-  if (!storeId) {
-    throw new Error('Store ID tidak ditemukan');
-  }
-
   const { data, error } = await supabase
     .from('media_library')
-    .select('is_used, file_size')
-    .eq('store_id', storeId);
+    .select('is_used, file_size');
 
   if (error) {
     console.error('❌ Error fetching media stats:', error);
