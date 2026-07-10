@@ -4,6 +4,17 @@
       "maxDuration": 10
     }
   },
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/static/(.*)", "dest": "/static/$1" },
@@ -11,6 +22,7 @@
     { "src": "/favicon.ico", "dest": "/favicon.ico" },
     { "src": "/manifest.json", "dest": "/manifest.json" },
     { "src": "/sw.js", "dest": "/sw.js" },
+    { "src": "/assets/(.*)\\.(js|css)", "status": 404 }, 
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
