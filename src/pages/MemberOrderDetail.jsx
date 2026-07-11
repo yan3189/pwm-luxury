@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar';
 import TrackingMap from '../components/TrackingMap';
 import { ArrowLeft, MapPin, Calendar, Package, Upload, CheckCircle, AlertCircle, Download, Truck, Eye, XCircle, MessageCircle } from 'lucide-react';
 import { calculateETA } from '../services/etaService';
+import { interpretDiscount, getDiscountLabel } from '../utils/priceUtils'; // DS001
 
 export default function MemberOrderDetail() {
   const { id } = useParams();
@@ -591,39 +592,12 @@ const checkPaymentStatus = async () => {
                     {/* ===== 1. PRODUK DARI ORDER_ITEMS + UPSEL ===== */}
                     {items.map(item => {
                       const isUpsell = item.is_upsell || item.from_upsell || false;
-                      
-                      // CEK APAKAH PRODUK PUNYA DISKON
-                      const hasDiscount = item.discount_percentage && item.discount_percentage > 0;
                       const originalPrice = item.original_price || item.price || 0;
-                      const displayPrice = item.discounted_price || item.price || 0;
-                      const totalPerItem = displayPrice * (item.quantity || 1);
-                      
-                      // Tentukan warna
-                      let priceColor = 'text-white';
-                      let discountText = null;
-                      
-                      if (isUpsell) {
-                        priceColor = 'text-yellow-500';
-                        if (hasDiscount) {
-                          const discountPerItem = originalPrice - displayPrice;
-                          discountText = (
-                            <div className="text-xs text-yellow-500">
-                              <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
-                              <span className="ml-1">-Rp {(discountPerItem * (item.quantity || 1)).toLocaleString()}</span>
-                            </div>
-                          );
-                        }
-                      } else if (hasDiscount) {
-                        priceColor = 'text-green-400';
-                        const discountPerItem = originalPrice - displayPrice;
-                        discountText = (
-                          <div className="text-xs text-green-400">
-                            <span className="line-through text-gray-500">Rp {originalPrice.toLocaleString()}</span>
-                            <span className="ml-1">-Rp {(discountPerItem * (item.quantity || 1)).toLocaleString()}</span>
-                          </div>
-                        );
-                      }
-                      
+                      const discountedPrice = item.discounted_price || item.price || 0;
+                      const totalOriginal = originalPrice * (item.quantity || 1);
+                      const totalDiscounted = discountedPrice * (item.quantity || 1);
+                      const hasDiscount = discountedPrice < originalPrice;
+
                       return (
                         <div key={item.id} className={`flex justify-between text-sm border-b border-white/5 pb-1 ${isUpsell ? 'text-yellow-500' : ''}`}>
                           <span>
@@ -631,8 +605,14 @@ const checkPaymentStatus = async () => {
                             {item.product_name} x{item.quantity}
                           </span>
                           <div className="text-right">
-                            <span className={priceColor}>Rp {totalPerItem.toLocaleString()}</span>
-                            {discountText}
+                            <span className={isUpsell ? 'text-yellow-500' : 'text-white'}>
+                              Rp {totalOriginal.toLocaleString()}
+                            </span>
+                            {hasDiscount && (
+                              <div className="text-xs text-green-400">
+                                -Rp {(totalOriginal - totalDiscounted).toLocaleString()}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -676,7 +656,15 @@ const checkPaymentStatus = async () => {
                     {/* ===== 5. DISKON VOUCHER ===== */}
                     {(order.voucher_discount || 0) > 0 && (
                       <div className="flex justify-between text-green-400 text-sm">
-                        <span>Diskon Voucher</span>
+                        <div>
+                          <span>Diskon Voucher</span>
+                          {order.selected_vouchers && order.selected_vouchers.length > 0 && (
+                            <div className="text-xs text-green-500/70">
+                              {/* Mengambil nama voucher dari list yang tersimpan (jika ada) */}
+                              Voucher digunakan
+                            </div>
+                          )}
+                        </div>
                         <span>-Rp {(order.voucher_discount || 0).toLocaleString()}</span>
                       </div>
                     )}
@@ -901,11 +889,10 @@ const checkPaymentStatus = async () => {
                 </div>
               </div>
 
+
               {/* Instruksi Pembayaran */}
-
-
-              
-              <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
+ 
+                <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
                 <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
                 <div className="bg-gray-800 rounded-lg p-3">
                   <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
@@ -936,10 +923,10 @@ const checkPaymentStatus = async () => {
                       <Eye size={14} /> Lihat bukti transfer
                     </a>
                   </div>
-                )}
-                </div>
-                </div>
-                )}
+                 )}
+                  </div>
+                  </div>
+                 )}
 
           {/* ========== TAB TRACKING ========== */}
           {activeTab === 'map' && (

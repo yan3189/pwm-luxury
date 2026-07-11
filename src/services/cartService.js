@@ -1,5 +1,8 @@
 // ========== FILE: src/services/cartService.js ==========
 // Service untuk mengelola cart di localStorage (dengan event real-time)
+// DS001: Import fungsi hitung diskon dari priceUtils
+import { calculateDiscountedPrice } from '../utils/priceUtils';
+
 const CART_KEY = 'pwm_cart'
 
 /**
@@ -15,7 +18,6 @@ export function getCart() {
  */
 export function saveCart(cart) {
   localStorage.setItem(CART_KEY, JSON.stringify(cart))
-  // Trigger event untuk komponen lain (FloatingCart, dll)
   window.dispatchEvent(new Event('cart-updated'))
 }
 
@@ -29,37 +31,32 @@ export function clearCart() {
 
 /**
  * Tambah item ke cart (dengan validasi store)
- * Jika store_id berbeda, konfirmasi hapus cart lama
  */
 export function addToCart(product, quantity = 1, confirmCallback) {
   const cart = getCart()
   const newStoreId = product.store_id
-  
-  // Jika cart kosong, buat baru
+
   if (!cart.store_id) {
     cart.store_id = newStoreId
     cart.items = []
   }
-  
-  // Jika store berbeda, perlu konfirmasi
+
   if (cart.store_id !== newStoreId) {
     if (confirmCallback && confirmCallback()) {
-      // Ganti store baru, reset cart
       cart.store_id = newStoreId
       cart.items = []
     } else {
       return false
     }
   }
-  
-  // Hitung harga diskon (snapshot)
-  const discountedPrice = product.has_discount 
-    ? Math.round(product.price * (100 - product.discount_percentage) / 100)
+
+  // DS001: Hitung harga diskon menggunakan fungsi dari priceUtils
+  const discountedPrice = product.has_discount && product.discount_value
+    ? calculateDiscountedPrice(product.price, product.has_discount, product.discount_value)
     : product.price
-  
-  // Cek apakah produk sudah ada di cart
+
   const existingIndex = cart.items.findIndex(item => item.product_id === product.id)
-  
+
   if (existingIndex !== -1) {
     cart.items[existingIndex].quantity += quantity
   } else {
@@ -69,12 +66,12 @@ export function addToCart(product, quantity = 1, confirmCallback) {
       name: product.name,
       original_price: product.price,
       discounted_price: discountedPrice,
-      discount_percentage: product.discount_percentage || 0,
+      discount_value: product.discount_value || 0,  // DS001: simpan nilai diskon mentah
       quantity: quantity,
       image_url: product.image_url
     })
   }
-  
+
   saveCart(cart)
   return true
 }
@@ -113,21 +110,21 @@ export function removeCartItem(productId) {
 }
 
 /**
- * Hitung subtotal cart (total sebelum ongkir)
+ * Hitung subtotal cart
  */
 export function getCartSubtotal(cart) {
   return cart.items.reduce((sum, item) => sum + (item.discounted_price * item.quantity), 0)
 }
 
 /**
- * Ambil total jumlah item (bukan quantity)
+ * Jumlah item unik
  */
 export function getCartItemCount(cart) {
   return cart.items.length
 }
 
 /**
- * Ambil total quantity semua item
+ * Total quantity semua item
  */
 export function getCartTotalQuantity(cart) {
   return cart.items.reduce((sum, item) => sum + item.quantity, 0)

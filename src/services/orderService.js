@@ -145,6 +145,7 @@ export async function createOrder(orderData, cartItems) {
     // STEP 2: SIMPAN ORDER ITEMS (DARI CART)
     // ============================================================
     
+     // DS001: Gunakan discount_value dari cart item sebagai discount_percentage
     const orderItems = cartItems.map(item => ({
       order_id: order.id,
       product_id: item.product_id,
@@ -152,7 +153,7 @@ export async function createOrder(orderData, cartItems) {
       quantity: item.quantity,
       price: item.original_price || item.price,
       discounted_price: item.discounted_price || item.price,
-      discount_percentage: item.discount_percentage || 0,
+      discount_percentage: item.discount_value || 0,   // DS001: simpan nilai diskon mentah
       original_price: item.original_price || item.price,
       total: (item.discounted_price || item.price) * item.quantity,
       subtotal: (item.discounted_price || item.price) * item.quantity

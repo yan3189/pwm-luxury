@@ -253,7 +253,7 @@ export async function generateProductCode(storeId, categoryId = null) {
  */
 export async function validateProductRowWithHeaders({ 
   nameRaw, priceRaw, descRaw, stockRaw, imageRaw, statusRaw, 
-  categoryRaw, barcodeRaw, productCodeRaw, rowIndex, storeId 
+  categoryRaw, barcodeRaw, productCodeRaw, discountRaw, rowIndex, storeId 
 }) {
   const errors = [];
   let categoryId = null;
@@ -309,6 +309,19 @@ export async function validateProductRowWithHeaders({
   // 9. Product Code (opsional)
   let productCode = null;
 const codeResult = validateProductCode(productCodeRaw);
+
+// DS001: Validasi kolom diskon
+  let diskonValue = 0;
+  let hasDiscount = false;
+  if (discountRaw !== undefined && discountRaw !== null && String(discountRaw).trim() !== '') {
+    const num = Number(discountRaw);
+    if (isNaN(num) || num < 0) {
+      errors.push(`Baris ${rowIndex}: Diskon harus berupa angka >= 0`);
+    } else {
+      diskonValue = num;
+      hasDiscount = num > 0;
+    }
+  }
 
 if (!codeResult.valid) {
   errors.push(`Baris ${rowIndex}: ${codeResult.error}`);
@@ -377,8 +390,8 @@ if (!productCode) {
       category_name: categoryName,
       barcode: barcodeResult.value,
       product_code: productCode,
-      has_discount: false,
-      discount_percentage: 0,
+            has_discount: hasDiscount,
+      discount_value: diskonValue,   // DS001: pakai discount_value
       is_featured: false,
     },
     errors: []
@@ -434,7 +447,7 @@ export async function parseExcelFile(file, storeId = null) {
         const categoryCol = findColumn(['Kategori', 'kategori', 'category']);
         const barcodeCol = findColumn(['Barcode', 'barcode']);
         const productCodeCol = findColumn(['Kode Produk', 'kode produk', 'product_code', 'product code']);
-
+          const discountCol = findColumn(['Diskon', 'diskon', 'discount', 'Discount']); //DS001
         console.log('📊 Column mapping:', { nameCol, priceCol, descCol, stockCol, imageCol, statusCol, categoryCol, barcodeCol, productCodeCol });
 
         if (!nameCol) {
@@ -463,7 +476,7 @@ export async function parseExcelFile(file, storeId = null) {
           const categoryRaw = categoryCol ? row[categoryCol] : '';
           const barcodeRaw = barcodeCol ? row[barcodeCol] : '';
           const productCodeRaw = productCodeCol ? row[productCodeCol] : '';
-
+const discountRaw = discountCol ? row[discountCol] : '';
           const isEmpty = !nameRaw && !priceRaw && !descRaw && !stockRaw;
           if (isEmpty) {
             rowIndex++;
@@ -481,6 +494,7 @@ export async function parseExcelFile(file, storeId = null) {
             barcodeRaw,
             productCodeRaw,
             rowIndex,
+            discountRaw,
             storeId
           });
 
@@ -659,8 +673,8 @@ export async function importProducts(products, storeIds = [], singleStoreId = nu
                 category_id: product.category_id || null,
                 barcode: product.barcode || null,
                 product_code: finalProductCode,
-                has_discount: false,
-                discount_percentage: 0,
+                has_discount: product.has_discount || false,
+  discount_value: product.discount_value || 0,  // DS001: pakai discount_value
                 is_featured: false,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()

@@ -95,7 +95,7 @@ useEffect(() => {
                 <div className="flex-1">
                   <p className="font-medium line-clamp-1">{item.name}</p>
                   <p className="text-yellow-500 text-xs">
-                    Rp {item.discounted_price.toLocaleString()}
+                    Rp {item.discounted_price.toLocaleString()} 
                     {item.discount_percentage > 0 && (
                       <span className="line-through text-gray-500 ml-1">Rp {item.original_price.toLocaleString()}</span>
                     )}
