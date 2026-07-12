@@ -231,19 +231,37 @@ tiktok_url: storeData.tiktok_url || ''
   // ============================================================
   // 2. LAPORAN PENJUALAN (DAFTAR TRANSAKSI + RINGKASAN)
   // ============================================================
+  const [upsellReport, setUpsellReport] = useState([]);
+const [showUpsellReport, setShowUpsellReport] = useState(false);
+const [upsellReportLoading, setUpsellReportLoading] = useState(false);
+  
   const fetchSalesReport = async () => {
     const targetStoreId = userRole === 'super_admin' ? selectedStoreId : storeId
     if (!targetStoreId) return
     setReportLoading(true)
 
     try {
-      // ✅ Ambil semua order dengan status delivered
-      const { data: orders, error } = await supabase
-        .from('orders')
-        .select('id, order_number, total_amount, final_total, shipping_cost, voucher_discount, created_at, status, upsell_items')
-        .eq('store_id', targetStoreId)
-        .eq('status', 'delivered')
-        .order('created_at', { ascending: false })
+      // ✅ Ambil semua order dengan status delivered, filter periode
+            let query = supabase
+              .from('orders')
+              .select('id, order_number, total_amount, final_total, shipping_cost, voucher_discount, created_at, status, upsell_items')
+              .eq('store_id', targetStoreId)
+              .eq('status', 'delivered')
+              .order('created_at', { ascending: false });
+
+            // DS001: Filter periode
+            const now = new Date();
+            if (reportPeriod === 'month') {
+              const startDate = new Date(reportYear, reportMonth - 1, 1).toISOString();
+              const endDate = new Date(reportYear, reportMonth, 0, 23, 59, 59).toISOString(); // akhir bulan
+              query = query.gte('created_at', startDate).lte('created_at', endDate);
+            } else if (reportPeriod === 'year') {
+              const startDate = new Date(reportYear, 0, 1).toISOString();
+              const endDate = new Date(reportYear, 11, 31, 23, 59, 59).toISOString();
+              query = query.gte('created_at', startDate).lte('created_at', endDate);
+            }
+
+            const { data: orders, error } = await query;
 
       if (error) throw error
       if (!orders || orders.length === 0) {
@@ -359,94 +377,190 @@ tiktok_url: storeData.tiktok_url || ''
     setReportLoading(false)
   }
 
-  // // ============================================================
-// 3. EXPORT KE EXCEL (4 SHEET) - DIPERBAIKI (UPSEL DISKON)
-// ============================================================
-const exportToExcel = () => {
-  // ============================================================
-  // Sheet 1: Daftar Transaksi
-  // ============================================================
-  const transactionData = rawOrders.map(o => ({
-    'Nomor Order': o.order_number,
-    'Tanggal': new Date(o.created_at).toLocaleDateString('id-ID'),
-    'Total Bayar': o.final_total || o.total_amount,
-    'Ongkos Kirim': o.shipping_cost || 0,
-    'Diskon Voucher': o.voucher_discount || 0,
-    'Status': o.status
-  }))
+        // ============================================================
+        // LAPORAN KHUSUS UPSEL
+        // ============================================================
+        const fetchUpsellReport = async () => {
+          const targetStoreId = userRole === 'super_admin' ? selectedStoreId : storeId;
+          if (!targetStoreId) return;
+          setUpsellReportLoading(true);
 
-              // ============================================================
-              // Sheet 2: Detail Item (CART + UPSEL dengan diskon yang benar)
-              // ============================================================
-              const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
-              
-              // --- Data dari order_items (CART) ---
-              const cartItemData = rawOrderItems.map(it => ({
-                'Nomor Order': orderMap.get(it.order_id) || '-',
-                'Nama Produk': it.product_name,
-                'Quantity': it.quantity,
-                'Harga Satuan': it.original_price || it.price || 0,
-                'Diskon %': it.discount_percentage || 0,
-                'Harga Setelah Diskon': it.discounted_price || it.price || 0,
-                'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
-              }))
+          try {
+            // Filter periode
+            let query = supabase
+              .from('orders')
+              .select('id, order_number, upsell_items, created_at')
+              .eq('store_id', targetStoreId)
+              .eq('status', 'delivered')
+              .order('created_at', { ascending: false });
 
-            // --- Data dari upsell_items (UPSEL) ---
-            let upsellItemData = []
-            rawOrders.forEach(order => {
+            const now = new Date();
+            if (reportPeriod === 'month') {
+              const startDate = new Date(reportYear, reportMonth - 1, 1).toISOString();
+              const endDate = new Date(reportYear, reportMonth, 0, 23, 59, 59).toISOString();
+              query = query.gte('created_at', startDate).lte('created_at', endDate);
+            } else if (reportPeriod === 'year') {
+              const startDate = new Date(reportYear, 0, 1).toISOString();
+              const endDate = new Date(reportYear, 11, 31, 23, 59, 59).toISOString();
+              query = query.gte('created_at', startDate).lte('created_at', endDate);
+            }
+
+            const { data: orders, error } = await query;
+            if (error) throw error;
+
+            // Kumpulkan semua upsell items
+            const upsellItems = [];
+            orders.forEach(order => {
               if (order.upsell_items && Array.isArray(order.upsell_items)) {
-                order.upsell_items.forEach(upsell => {
-                  const origPrice = upsell.price || 0;
-                  const qty = upsell.quantity || 1;
-                  const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+                order.upsell_items.forEach(item => {
+                  const origPrice = item.price || 0;
+                  const qty = item.quantity || 1;
+                  const hasDiscount = item.has_discount && item.discount_value > 0;
                   const discPrice = hasDiscount
-                    ? calculateDiscountedPrice(origPrice, upsell.has_discount, upsell.discount_value)
+                    ? calculateDiscountedPrice(origPrice, item.has_discount, item.discount_value)
                     : origPrice;
-                  
-                  upsellItemData.push({
-                    'Nomor Order': order.order_number,
-                    'Nama Produk': upsell.name || 'Produk Upsell',
-                    'Quantity': qty,
-                    'Harga Satuan': origPrice,
-                    'Diskon %': upsell.discount_value || 0,  // DS001: simpan nilai mentah
-                    'Harga Setelah Diskon': discPrice,
-                    'Subtotal': discPrice * qty
-                  })
-                })
+                  upsellItems.push({
+                    order_number: order.order_number,
+                    tanggal: new Date(order.created_at).toLocaleDateString('id-ID'),
+                    nama_produk: item.name || 'Produk Upsell',
+                    qty: qty,
+                    harga_normal: origPrice,
+                    harga_diskon: discPrice,
+                    total: discPrice * qty,
+                    has_discount: hasDiscount,
+                    discount_value: item.discount_value || 0
+                  });
+                });
               }
-            })
+            });
 
-  // Gabungkan semua item (cart + upsell)
-  const allItemData = [...cartItemData, ...upsellItemData]
+            setUpsellReport(upsellItems);
+          } catch (err) {
+            console.error(err);
+          }
+          setUpsellReportLoading(false);
+        };
 
-  // ============================================================
-  // Sheet 3: Favorit vs Non-Favorit
-  // ============================================================
-  const featuredData = featuredVsNonFeatured.map(f => ({
-    'Tipe': f.type,
-    'Jumlah Terjual': f.total_qty,
-    'Omzet': f.total_sales,
-    'Kontribusi (%)': f.percentage
-  }))
+                // // ============================================================
+              // 3. EXPORT KE EXCEL (4 SHEET) - DIPERBAIKI (UPSEL DISKON)
+              // ============================================================
+              const exportToExcel = () => {
+                // ============================================================
+                // Sheet 1: Daftar Transaksi
+                // ============================================================
+                const transactionData = rawOrders.map(o => ({
+                  'Nomor Order': o.order_number,
+                  'Tanggal': new Date(o.created_at).toLocaleDateString('id-ID'),
+                  'Total Bayar': o.final_total || o.total_amount,
+                  'Ongkos Kirim': o.shipping_cost || 0,
+                  'Diskon Voucher': o.voucher_discount || 0,
+                  'Status': o.status
+                }))
 
-  // ============================================================
-  // Sheet 4: Dampak Diskon
-  // ============================================================
-  const discountData = discountImpact ? [{
-    'Total Sebelum Diskon': discountImpact.seharusnya,
-    'Total Setelah Diskon': discountImpact.realisasi,
-    'Total Diskon': discountImpact.total_diskon,
-    'Item Mendapat Diskon': discountImpact.diskonItems
-  }] : []
+                // ============================================================
+                // Sheet 2: Detail Item (CART + UPSEL)
+                // ============================================================
+                const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
+                
+                // --- Data dari order_items (CART) ---
+                const cartItemData = rawOrderItems.map(it => ({
+                  'Nomor Order': orderMap.get(it.order_id) || '-',
+                  'Nama Produk': it.product_name,
+                  'Quantity': it.quantity,
+                  'Harga Satuan': it.original_price || it.price || 0,
+                  'Diskon %': it.discount_percentage || 0,
+                  'Harga Setelah Diskon': it.discounted_price || it.price || 0,
+                  'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
+                }))
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactionData), 'Daftar Transaksi')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allItemData), 'Detail Item')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(featuredData), 'Favorit vs Non')
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(discountData), 'Dampak Diskon')
+                // --- Data dari upsell_items (UPSEL) ---
+                let upsellItemData = []
+                rawOrders.forEach(order => {
+                  if (order.upsell_items && Array.isArray(order.upsell_items)) {
+                    order.upsell_items.forEach(upsell => {
+                      const origPrice = upsell.price || 0;
+                      const qty = upsell.quantity || 1;
+                      const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+                      const discPrice = hasDiscount
+                        ? calculateDiscountedPrice(origPrice, upsell.has_discount, upsell.discount_value)
+                        : origPrice;
+                      
+                      upsellItemData.push({
+                        'Nomor Order': order.order_number,
+                        'Nama Produk': upsell.name || 'Produk Upsell',
+                        'Quantity': qty,
+                        'Harga Satuan': origPrice,
+                        'Diskon %': upsell.discount_value || 0,
+                        'Harga Setelah Diskon': discPrice,
+                        'Subtotal': discPrice * qty
+                      })
+                    })
+                  }
+                })
 
-  XLSX.writeFile(wb, `laporan_penjualan_${new Date().toISOString().slice(0,10)}.xlsx`)
-}
+                // Gabungkan
+                const allItemData = [...cartItemData, ...upsellItemData]
+
+                // ============================================================
+                // Sheet 3: Favorit vs Non-Favorit
+                // ============================================================
+                const featuredData = featuredVsNonFeatured.map(f => ({
+                  'Tipe': f.type,
+                  'Jumlah Terjual': f.total_qty,
+                  'Omzet': f.total_sales,
+                  'Kontribusi (%)': f.percentage
+                }))
+
+                // ============================================================
+                // Sheet 4: Dampak Diskon
+                // ============================================================
+                const discountData = discountImpact ? [{
+                  'Total Sebelum Diskon': discountImpact.seharusnya,
+                  'Total Setelah Diskon': discountImpact.realisasi,
+                  'Total Diskon': discountImpact.total_diskon,
+                  'Item Mendapat Diskon': discountImpact.diskonItems
+                }] : []
+
+                // ============================================================
+                // DS001: Sheet 5 - Laporan Upsell (khusus)
+                // ============================================================
+                const upsellSheetData = rawOrders.reduce((acc, order) => {
+                  if (order.upsell_items && Array.isArray(order.upsell_items)) {
+                    order.upsell_items.forEach(upsell => {
+                      const origPrice = upsell.price || 0;
+                      const qty = upsell.quantity || 1;
+                      const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+                      const discPrice = hasDiscount
+                        ? calculateDiscountedPrice(origPrice, upsell.has_discount, upsell.discount_value)
+                        : origPrice;
+                      acc.push({
+                        'Nomor Order': order.order_number,
+                        'Tanggal': new Date(order.created_at).toLocaleDateString('id-ID'),
+                        'Nama Produk': upsell.name || 'Produk Upsell',
+                        'Qty': qty,
+                        'Harga Normal': origPrice,
+                        'Harga Diskon': hasDiscount ? discPrice : origPrice,
+                        'Total': discPrice * qty
+                      })
+                    })
+                  }
+                  return acc;
+                }, []);
+
+                // ============================================================
+                // BENTUK WORKBOOK & EXPORT
+                // ============================================================
+                const wb = XLSX.utils.book_new()
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactionData), 'Daftar Transaksi')
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allItemData), 'Detail Item')
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(featuredData), 'Favorit vs Non')
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(discountData), 'Dampak Diskon')
+                if (upsellSheetData.length > 0) {
+                  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(upsellSheetData), 'Laporan Upsell')
+                }
+
+                XLSX.writeFile(wb, `laporan_penjualan_${new Date().toISOString().slice(0,10)}.xlsx`)
+              }
 
   // ============================================================
   // 4. FUNGSI UTILITY LAIN (LOGOUT, UPDATE STORE, DLL)
