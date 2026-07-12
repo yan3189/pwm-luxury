@@ -19,6 +19,7 @@ import LocationPicker from '../components/LocationPicker'
 import * as XLSX from 'xlsx'
 import ImportProductsModal from '../components/ImportProductsModal';
 import MediaGallery from '../components/MediaGallery'
+import { calculateDiscountedPrice, interpretDiscount } from '../utils/priceUtils'; // DS001
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
@@ -274,19 +275,22 @@ tiktok_url: storeData.tiktok_url || ''
       let seharusnya = 0, realisasi = 0, diskonItems = 0
       const allItems = [...(items || [])]
       
-      // Tambahkan upsell items ke perhitungan
-      orders.forEach(order => {
-        if (order.upsell_items && Array.isArray(order.upsell_items)) {
-          order.upsell_items.forEach(upsell => {
-            const price = upsell.discounted_price || upsell.price || 0
-            const qty = upsell.quantity || 1
-            const origPrice = upsell.price || 0
-            seharusnya += origPrice * qty
-            realisasi += price * qty
-            if (origPrice > price) diskonItems++
+      // DS001: Gunakan calculateDiscountedPrice untuk menghitung diskon upsell
+          orders.forEach(order => {
+            if (order.upsell_items && Array.isArray(order.upsell_items)) {
+              order.upsell_items.forEach(upsell => {
+                const origPrice = upsell.price || 0;
+                const qty = upsell.quantity || 1;
+                const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+                const discPrice = hasDiscount
+                  ? calculateDiscountedPrice(origPrice, upsell.has_discount, upsell.discount_value)
+                  : origPrice;
+                seharusnya += origPrice * qty;
+                realisasi += discPrice * qty;
+                if (origPrice > discPrice) diskonItems++;
+              })
+            }
           })
-        }
-      })
       
       // Hitung dari order_items
       if (items) {
@@ -371,54 +375,46 @@ const exportToExcel = () => {
     'Status': o.status
   }))
 
-  // ============================================================
-  // Sheet 2: Detail Item (CART + UPSEL dengan diskon yang benar)
-  // ============================================================
-  const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
-  
-  // --- Data dari order_items (CART) ---
-  const cartItemData = rawOrderItems.map(it => ({
-    'Nomor Order': orderMap.get(it.order_id) || '-',
-    'Nama Produk': it.product_name,
-    'Quantity': it.quantity,
-    'Harga Satuan': it.original_price || it.price || 0,
-    'Diskon %': it.discount_percentage || 0,
-    'Harga Setelah Diskon': it.discounted_price || it.price || 0,
-    'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
-  }))
+              // ============================================================
+              // Sheet 2: Detail Item (CART + UPSEL dengan diskon yang benar)
+              // ============================================================
+              const orderMap = new Map(rawOrders.map(o => [o.id, o.order_number]))
+              
+              // --- Data dari order_items (CART) ---
+              const cartItemData = rawOrderItems.map(it => ({
+                'Nomor Order': orderMap.get(it.order_id) || '-',
+                'Nama Produk': it.product_name,
+                'Quantity': it.quantity,
+                'Harga Satuan': it.original_price || it.price || 0,
+                'Diskon %': it.discount_percentage || 0,
+                'Harga Setelah Diskon': it.discounted_price || it.price || 0,
+                'Subtotal': it.subtotal || (it.discounted_price || it.price || 0) * it.quantity
+              }))
 
-  // --- Data dari upsell_items (UPSEL) ---
-let upsellItemData = []
-rawOrders.forEach(order => {
-  if (order.upsell_items && Array.isArray(order.upsell_items)) {
-    order.upsell_items.forEach(upsell => {
-      // ✅ Ambil data diskon dari JSONB (dengan fallback)
-      const hasDiscount = upsell.has_discount || false
-      const discountPercent = upsell.discount_percentage || 0
-      const originalPrice = upsell.price || 0
-      
-      // ✅ Gunakan discounted_price jika ada, jika tidak hitung dari diskon
-      let discountedPrice = upsell.discounted_price
-      if (!discountedPrice && hasDiscount && discountPercent > 0) {
-        discountedPrice = Math.round(originalPrice * (1 - discountPercent / 100))
-      } else if (!discountedPrice) {
-        discountedPrice = originalPrice
-      }
-      
-      const qty = upsell.quantity || 1
-        
-        upsellItemData.push({
-          'Nomor Order': order.order_number,
-          'Nama Produk': upsell.name || 'Produk Upsell',
-          'Quantity': qty,
-          'Harga Satuan': originalPrice,
-          'Diskon %': discountPercent,
-          'Harga Setelah Diskon': discountedPrice,
-          'Subtotal': discountedPrice * qty
-        })
-      })
-    }
-  })
+            // --- Data dari upsell_items (UPSEL) ---
+            let upsellItemData = []
+            rawOrders.forEach(order => {
+              if (order.upsell_items && Array.isArray(order.upsell_items)) {
+                order.upsell_items.forEach(upsell => {
+                  const origPrice = upsell.price || 0;
+                  const qty = upsell.quantity || 1;
+                  const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+                  const discPrice = hasDiscount
+                    ? calculateDiscountedPrice(origPrice, upsell.has_discount, upsell.discount_value)
+                    : origPrice;
+                  
+                  upsellItemData.push({
+                    'Nomor Order': order.order_number,
+                    'Nama Produk': upsell.name || 'Produk Upsell',
+                    'Quantity': qty,
+                    'Harga Satuan': origPrice,
+                    'Diskon %': upsell.discount_value || 0,  // DS001: simpan nilai mentah
+                    'Harga Setelah Diskon': discPrice,
+                    'Subtotal': discPrice * qty
+                  })
+                })
+              }
+            })
 
   // Gabungkan semua item (cart + upsell)
   const allItemData = [...cartItemData, ...upsellItemData]

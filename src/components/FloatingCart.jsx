@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingBag, X, Plus, Minus, Trash2 } from 'lucide-react';
 import { getCart, updateCartItemQuantity, removeCartItem, getCartSubtotal, getCartTotalQuantity } from '../services/cartService';
+import { interpretDiscount, calculateDiscountedPrice } from '../utils/priceUtils'; // DS001
 
 export default function FloatingCart() {
   const [cart, setCart] = useState({ store_id: null, items: [] });
@@ -95,11 +96,13 @@ useEffect(() => {
                 <div className="flex-1">
                   <p className="font-medium line-clamp-1">{item.name}</p>
                   <p className="text-yellow-500 text-xs">
-                    Rp {item.discounted_price.toLocaleString()} 
-                    {item.discount_percentage > 0 && (
-                      <span className="line-through text-gray-500 ml-1">Rp {item.original_price.toLocaleString()}</span>
-                    )}
-                  </p>
+                      Rp {item.original_price.toLocaleString()}
+                      {item.discounted_price < item.original_price && (
+                        <div className="text-green-400 text-[10px]">
+                          -Rp {((item.original_price - item.discounted_price) * item.quantity).toLocaleString()}
+                        </div>
+                      )}
+                    </p>
                   <div className="flex items-center gap-2 mt-1">
                     <button 
                       onClick={() => handleUpdateQuantity(item.product_id, item.quantity - 1)} 

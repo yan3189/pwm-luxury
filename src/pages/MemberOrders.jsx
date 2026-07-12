@@ -81,7 +81,10 @@ export default function MemberOrders() {
                   <div>
                     <p className="text-sm text-gray-400">#{order.order_number}</p>
                     <p className="font-semibold">{order.stores?.name}</p>
-                    <p className="text-sm">Total: Rp {order.total_amount.toLocaleString()}</p>
+                    <p className="text-sm">Total: Rp {(order.final_total || order.total_amount).toLocaleString()}</p>
+                    {order.voucher_discount > 0 && (
+  <p className="text-xs text-green-400">Diskon Voucher: -Rp {order.voucher_discount.toLocaleString()}</p>
+)}
                   </div>
                   <div className="text-right">
                     {getStatusBadge(order.status)}

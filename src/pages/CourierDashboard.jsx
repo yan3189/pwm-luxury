@@ -8,6 +8,7 @@ import {
   Navigation, Phone, LogOut, Play, StopCircle, ChevronDown, ChevronUp, MessageCircle, Gift
 } from 'lucide-react';
 import SlideToConfirm from '../components/SlideToConfirm';
+import { interpretDiscount, calculateDiscountedPrice } from '../utils/priceUtils'; // DS001
 
 export default function CourierDashboard() {
   const [user, setUser] = useState(null);
@@ -217,24 +218,37 @@ export default function CourierDashboard() {
       
       let allItems = [];
       
-      if (order?.order_items && order.order_items.length > 0) {
-        allItems = allItems.concat(order.order_items.map(item => ({
-          ...item,
-          is_upsell: false
-        })));
-      }
+                  if (order?.order_items && order.order_items.length > 0) {
+              allItems = allItems.concat(order.order_items.map(item => {
+                const hasDiscount = item.discount_percentage && item.discount_percentage > 0;
+                return {
+                  ...item,
+                  is_upsell: false,
+                  has_discount: hasDiscount,
+                  discount_value: item.discount_percentage || 0
+                };
+              }));
+            }
       
-      if (order?.upsell_items && Array.isArray(order.upsell_items) && order.upsell_items.length > 0) {
-        const upsellItems = order.upsell_items.map(upsell => ({
-          product_name: upsell.name || 'Produk Upsell',
-          quantity: upsell.quantity || 1,
-          total: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
-          is_upsell: true,
-          discounted_price: upsell.discounted_price || upsell.price || 0,
-          original_price: upsell.price || 0
-        }));
-        allItems = allItems.concat(upsellItems);
-      }
+              if (order?.upsell_items && Array.isArray(order.upsell_items) && order.upsell_items.length > 0) {
+          const upsellItems = order.upsell_items.map(upsell => {
+            const hasDiscount = upsell.has_discount && upsell.discount_value > 0;
+            const discountedPrice = hasDiscount
+              ? calculateDiscountedPrice(upsell.price, upsell.has_discount, upsell.discount_value)
+              : upsell.price;
+            return {
+              product_name: upsell.name || 'Produk Upsell',
+              quantity: upsell.quantity || 1,
+              total: discountedPrice * (upsell.quantity || 1),
+              is_upsell: true,
+              discounted_price: discountedPrice,
+              original_price: upsell.price || 0,
+              has_discount: hasDiscount,
+              discount_value: upsell.discount_value || 0
+            };
+          });
+          allItems = allItems.concat(upsellItems);
+        }
       
       // ✅ PASTIKAN is_shipping_free DIAMBIL DARI MAP
       const isShippingFree = shippingFreeMap.get(order?.id) || false;
@@ -575,15 +589,31 @@ export default function CourierDashboard() {
                           <div className="bg-gray-800/50 rounded-lg p-3">
                             <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
                             <div className="space-y-1">
-                              {order?.all_items && order.all_items.length > 0 ? (
-                                order.all_items.map((item, idx) => (
-                                  <div key={idx} className="flex justify-between text-xs">
-                                    <span>
-                                      {item.is_upsell && <span className="text-yellow-500">+ </span>}
-                                      {item.product_name} x{item.quantity}
-                                    </span>
-                                  </div>
-                                ))
+                             {order?.all_items && order.all_items.length > 0 ? (
+                                order.all_items.map((item, idx) => {
+                                  const origPrice = item.original_price || item.price || 0;
+                                  const discPrice = item.discounted_price || item.price || 0;
+                                  const totalOrig = origPrice * item.quantity;
+                                  const totalDisc = discPrice * item.quantity;
+                                  const hasDiscount = discPrice < origPrice;
+
+                                  return (
+                                    <div key={idx} className="flex justify-between text-xs py-0.5">
+                                      <span>
+                                        {item.is_upsell && <span className="text-yellow-500">+ </span>}
+                                        {item.product_name} x{item.quantity}
+                                      </span>
+                                      <div className="text-right">
+                                        <span>Rp {totalOrig.toLocaleString()}</span>
+                                        {hasDiscount && (
+                                          <div className="text-[10px] text-green-400">
+                                            -Rp {(totalOrig - totalDisc).toLocaleString()}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
                               ) : (
                                 <p className="text-xs text-gray-500">-</p>
                               )}
@@ -775,18 +805,34 @@ export default function CourierDashboard() {
                           <div className="bg-gray-800/50 rounded-lg p-3">
                             <h4 className="text-xs font-semibold text-gray-400 mb-1">📦 Barang Dipesan:</h4>
                             <div className="space-y-1">
-                              {order?.all_items && order.all_items.length > 0 ? (
-                                order.all_items.map((item, idx) => (
-                                  <div key={idx} className="flex justify-between text-xs">
-                                    <span>
-                                      {item.is_upsell && <span className="text-yellow-500">+ </span>}
-                                      {item.product_name} x{item.quantity}
-                                    </span>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-xs text-gray-500">-</p>
-                              )}
+                             {order?.all_items && order.all_items.length > 0 ? (
+                                  order.all_items.map((item, idx) => {
+                                    const origPrice = item.original_price || item.price || 0;
+                                    const discPrice = item.discounted_price || item.price || 0;
+                                    const totalOrig = origPrice * item.quantity;
+                                    const totalDisc = discPrice * item.quantity;
+                                    const hasDiscount = discPrice < origPrice;
+
+                                    return (
+                                      <div key={idx} className="flex justify-between text-xs py-0.5">
+                                        <span>
+                                          {item.is_upsell && <span className="text-yellow-500">+ </span>}
+                                          {item.product_name} x{item.quantity}
+                                        </span>
+                                        <div className="text-right">
+                                          <span>Rp {totalOrig.toLocaleString()}</span>
+                                          {hasDiscount && (
+                                            <div className="text-[10px] text-green-400">
+                                              -Rp {(totalOrig - totalDisc).toLocaleString()}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <p className="text-xs text-gray-500">-</p>
+                                )}
                             </div>
                             <div className="border-t border-white/10 mt-2 pt-2">
                               

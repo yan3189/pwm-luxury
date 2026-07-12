@@ -516,14 +516,14 @@ const upsellTotal = selectedUpsells.reduce((sum, item) => {
                 }),
         selected_vouchers: selectedVouchers.map(v => v.id)
       };
-
-      console.log('📊 ORDER PAYLOAD:', orderPayload);
-      const order = await createOrder(orderPayload, cart.items);
 // DS001: Jika COD, langsung status processing dan payment_method cod
 if (paymentMethod === 'cod') {
   orderPayload.status = 'processing';
   orderPayload.payment_method = 'cod';
 }
+      console.log('📊 ORDER PAYLOAD:', orderPayload);
+      const order = await createOrder(orderPayload, cart.items);
+
       if (user) {
         navigate(`/member/orders/${order.id}`);
       } else {
