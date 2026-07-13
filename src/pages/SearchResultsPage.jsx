@@ -70,7 +70,7 @@ export default function SearchResultsPage() {
               {results.products.map(product => (
                 <Link
                   key={product.id}
-                  to={`/store/${product.store_slug}?product=${product.id}`}
+                  to={`/product/${product.id}`}
                   className="bg-gray-900/50 rounded-xl p-4 border border-white/10 hover:border-yellow-500/50 transition flex gap-4 group"
                 >
                   <img 
@@ -82,9 +82,18 @@ export default function SearchResultsPage() {
                     <p className="font-semibold line-clamp-1">{product.name}</p>
                     <p className="text-sm text-gray-400">{product.store_name}</p>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-yellow-500 font-semibold">Rp {product.price?.toLocaleString()}</span>
+                      <div>
+                        {product.has_discount && product.final_price ? (
+                          <>
+                            <span className="text-gray-500 text-xs line-through">Rp {product.price?.toLocaleString()}</span>
+                            <span className="text-orange-400 font-semibold ml-1">Rp {product.final_price?.toLocaleString()}</span>
+                          </>
+                        ) : (
+                          <span className="text-yellow-500 font-semibold">Rp {product.price?.toLocaleString()}</span>
+                        )}
+                      </div>
                       {product.distance_km && (
-                        <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        <span className={`text-xs flex items-center gap-0.5 ml-auto ${product.distance_km < 20 ? 'text-green-400' : 'text-red-400'}`}>
                           <MapPin size={10} /> {formatDistance(product.distance_km)}
                         </span>
                       )}
@@ -108,7 +117,7 @@ export default function SearchResultsPage() {
                   key={store.id}
                   to={`/store/${store.slug}`}
                   className="bg-gray-900/50 rounded-xl p-4 border border-white/10 hover:border-yellow-500/50 transition flex gap-4 group"
-                >
+                  >
                   <img 
                     src={store.image_url || 'https://placehold.co/80'} 
                     className="w-20 h-20 object-cover rounded-full group-hover:scale-105 transition duration-300" 
@@ -117,9 +126,9 @@ export default function SearchResultsPage() {
                   <div className="flex-1">
                     <p className="font-semibold">{store.name}</p>
                     {store.distance_km && (
-                      <p className="text-sm text-gray-400 flex items-center gap-0.5 mt-1">
-                        <MapPin size={12} /> {formatDistance(store.distance_km)}
-                      </p>
+                      <span className={`text-xs flex items-center gap-0.5 ml-2 ${store.distance_km < 20 ? 'text-green-400' : 'text-red-400'}`}>
+      <MapPin size={10} /> {formatDistance(store.distance_km)}
+    </span>
                     )}
                   </div>
                 </Link>

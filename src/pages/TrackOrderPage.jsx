@@ -7,6 +7,7 @@ import Navbar from '../components/Navbar';
 import TrackingMap from '../components/TrackingMap';
 import { ArrowLeft, MapPin, Calendar, Package, Upload, CheckCircle, AlertCircle, Download, Truck, Eye, XCircle, MessageCircle, User } from 'lucide-react';
 import { calculateETA } from '../services/etaService';
+import { interpretDiscount, calculateDiscountedPrice } from '../utils/priceUtils'; // DS001
 
 export default function TrackOrderPage() {
   const { id } = useParams();
@@ -79,12 +80,35 @@ export default function TrackOrderPage() {
       }
     }
     
-    // Step 3: Ambil items
-    const { data: itemsData } = await supabase
-      .from('order_items')
-      .select('*')
-      .eq('order_id', id);
-    setItems(itemsData || []);
+                // Step 3: Ambil items dari order_items
+            const { data: itemsData } = await supabase
+              .from('order_items')
+              .select('*')
+              .eq('order_id', id);
+
+            // DS001: Gabungkan dengan upsell_items dari order
+            let allItems = itemsData || [];
+            if (orderData.upsell_items && Array.isArray(orderData.upsell_items) && orderData.upsell_items.length > 0) {
+              const upsellItems = orderData.upsell_items.map((upsell, index) => ({
+                id: `upsell-${index}`,
+                order_id: orderData.id,
+                product_id: upsell.product_id || null,
+                product_name: upsell.name || 'Produk Upsell',
+                quantity: upsell.quantity || 1,
+                price: upsell.price || 0,
+                total: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+                discount_percentage: upsell.discount_value || 0, // DS001: pakai discount_value
+                original_price: upsell.price || 0,
+                discounted_price: upsell.discounted_price || upsell.price || 0,
+                subtotal: (upsell.discounted_price || upsell.price || 0) * (upsell.quantity || 1),
+                is_upsell: true,
+                from_upsell: true,
+                has_discount: upsell.has_discount || false,
+                discount_value: upsell.discount_value || 0
+              }));
+              allItems = [...allItems, ...upsellItems];
+            }
+            setItems(allItems);
     
     // Step 4: Ambil delivery assignment
     let deliveryData = null;
@@ -523,12 +547,33 @@ export default function TrackOrderPage() {
                 <div>
                   <h2 className="font-semibold mb-2"><Package size={16} /> Produk</h2>
                   <div className="bg-gray-800/50 rounded-lg p-3 space-y-1">
-                    {items.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm border-b border-white/5 pb-1">
-                        <span>{item.product_name} x{item.quantity}</span>
-                        <span>Rp {item.total?.toLocaleString()}</span>
-                      </div>
-                    ))}
+                    {items.map(item => {
+                      const isUpsell = item.is_upsell || item.from_upsell || false;
+                      const originalPrice = item.original_price || item.price || 0;
+                      const discountedPrice = item.discounted_price || item.price || 0;
+                      const totalOriginal = originalPrice * (item.quantity || 1);
+                      const totalDiscounted = discountedPrice * (item.quantity || 1);
+                      const hasDiscount = discountedPrice < originalPrice;
+
+                      return (
+                        <div key={item.id} className={`flex justify-between text-sm border-b border-white/5 pb-1 ${isUpsell ? 'text-yellow-500' : ''}`}>
+                          <span>
+                            {isUpsell && <span className="text-yellow-500">+ </span>}
+                            {item.product_name} x{item.quantity}
+                          </span>
+                          <div className="text-right">
+                            <span className={isUpsell ? 'text-yellow-500' : 'text-white'}>
+                              Rp {totalOriginal.toLocaleString()}
+                            </span>
+                            {hasDiscount && (
+                              <div className="text-xs text-green-400">
+                                -Rp {(totalOriginal - totalDiscounted).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                     <div className="flex justify-between text-sm pt-1">
                       <span>Subtotal</span>
                       <span>Rp {subtotal.toLocaleString()}</span>

@@ -14,10 +14,7 @@ export default function GlobalSearch() {
   const debounceRef = useRef(null);
 
   useEffect(() => {
-    // Ambil lokasi user untuk hitung jarak
     getUserDefaultLocation().then(loc => setLocation(loc));
-    
-    // Click outside handler
     const handleClickOutside = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
         setIsOpen(false);
@@ -29,7 +26,6 @@ export default function GlobalSearch() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    
     if (query.length >= 2) {
       debounceRef.current = setTimeout(async () => {
         setLoading(true);
@@ -43,7 +39,6 @@ export default function GlobalSearch() {
       setIsOpen(false);
       setResults({ products: [], stores: [], articles: [], total: 0 });
     }
-    
     return () => clearTimeout(debounceRef.current);
   }, [query, location]);
 
@@ -77,11 +72,10 @@ export default function GlobalSearch() {
         )}
       </div>
 
-      {/* Dropdown Hasil */}
       {isOpen && totalResults > 0 && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl border border-white/10 shadow-xl z-50 max-h-96 overflow-y-auto">
           <div className="p-2">
-            {/* Produk */}
+            {/* PRODUK */}
             {results.products.length > 0 && (
               <div className="mb-3">
                 <div className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400">
@@ -90,19 +84,32 @@ export default function GlobalSearch() {
                 {results.products.map(product => (
                   <Link
                     key={product.id}
-                    to={`/store/${product.store_slug}?product=${product.id}`}                    onClick={() => setIsOpen(false)}
+                    to={`/product/${product.id}`} // DS001: langsung ke detail produk
+                    onClick={() => setIsOpen(false)}
                     className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg transition"
                   >
-                    <img src={product.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded" />
+                    <img src={product.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded" alt={product.name} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{product.name}</p>
-                      <p className="text-xs text-gray-400">{product.store_name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-yellow-500 text-xs font-semibold">Rp {product.price?.toLocaleString()}</span>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium truncate">{product.name}</p>
+                          <p className="text-xs text-gray-400">{product.store_name}</p>
+                        </div>
                         {product.distance_km && (
-                          <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                          <span className={`text-xs flex items-center gap-0.5 ml-2 ${product.distance_km < 20 ? 'text-green-400' : 'text-red-400'}`}>
                             <MapPin size={10} /> {formatDistance(product.distance_km)}
                           </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {/* Harga diskon */}
+                        {product.has_discount && product.final_price ? (
+                          <>
+                            <span className="text-gray-500 text-xs line-through">Rp {product.price?.toLocaleString()}</span>
+                            <span className="text-orange-400 text-xs font-semibold">Rp {product.final_price?.toLocaleString()}</span>
+                          </>
+                        ) : (
+                          <span className="text-yellow-500 text-xs font-semibold">Rp {product.price?.toLocaleString()}</span>
                         )}
                       </div>
                     </div>
@@ -111,7 +118,7 @@ export default function GlobalSearch() {
               </div>
             )}
 
-            {/* Toko */}
+            {/* TOKO */}
             {results.stores.length > 0 && (
               <div className="mb-3">
                 <div className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400">
@@ -124,13 +131,13 @@ export default function GlobalSearch() {
                     onClick={() => setIsOpen(false)}
                     className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg transition"
                   >
-                    <img src={store.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded-full" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{store.name}</p>
+                    <img src={store.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded-full" alt={store.name} />
+                    <div className="flex-1 flex items-center justify-between">
+                      <span className="text-sm font-medium">{store.name}</span>
                       {store.distance_km && (
-                        <p className="text-xs text-gray-400 flex items-center gap-0.5">
+                        <span className={`text-xs flex items-center gap-0.5 ml-2 ${store.distance_km < 20 ? 'text-green-400' : 'text-red-400'}`}>
                           <MapPin size={10} /> {formatDistance(store.distance_km)}
-                        </p>
+                        </span>
                       )}
                     </div>
                   </Link>
@@ -138,7 +145,7 @@ export default function GlobalSearch() {
               </div>
             )}
 
-            {/* Artikel */}
+            {/* ARTIKEL */}
             {results.articles.length > 0 && (
               <div className="mb-2">
                 <div className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400">
@@ -151,7 +158,7 @@ export default function GlobalSearch() {
                     onClick={() => setIsOpen(false)}
                     className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg transition"
                   >
-                    <img src={article.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded" />
+                    <img src={article.image_url || 'https://placehold.co/40'} className="w-10 h-10 object-cover rounded" alt={article.name} />
                     <div className="flex-1">
                       <p className="text-sm font-medium truncate">{article.name}</p>
                       <p className="text-xs text-gray-400">{article.store_name}</p>
@@ -161,7 +168,6 @@ export default function GlobalSearch() {
               </div>
             )}
 
-            {/* Link Lihat Semua */}
             {totalResults > 0 && (
               <Link
                 to={`/search?q=${encodeURIComponent(query)}`}
@@ -175,7 +181,6 @@ export default function GlobalSearch() {
         </div>
       )}
 
-      {/* Loading indicator */}
       {loading && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl border border-white/10 shadow-xl z-50 p-4 text-center text-gray-400 text-sm">
           <div className="animate-pulse">Mencari...</div>

@@ -1,5 +1,6 @@
 // src/services/searchService.js
 import { supabase } from '../lib/supabase';
+import { calculateDiscountedPrice } from '../utils/priceUtils'; // DS001
 
 /**
  * Hitung jarak Haversine antara dua koordinat (km)
@@ -26,21 +27,36 @@ export async function globalSearch(query, userLat = -6.2088, userLng = 106.8456)
   
   const searchTerm = `%${query}%`;
   
-  // 1. Cari produk (tambahkan stores.slug)
-const { data: products, error: productsError } = await supabase
+
+// 1. Cari produk (nama, deskripsi, atau kategori)
+let productQuery = supabase
   .from('products')
   .select(`
     id,
     name,
     price,
     image_url,
+    has_discount,
+    discount_value,
     store_id,
+    category_id,
     stores (id, name, slug, latitude, longitude)
   `)
-  .or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`)
-  .limit(5);
-  
-  if (productsError) console.error('Products search error:', productsError);
+  .or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`);
+
+// DS001: Cari kategori yang cocok dengan query
+const { data: matchingCategories } = await supabase
+  .from('master_categories')
+  .select('id')
+  .ilike('name', `%${query}%`);
+
+const categoryIds = matchingCategories?.map(c => c.id) || [];
+if (categoryIds.length > 0) {
+  productQuery = productQuery.in('category_id', categoryIds);
+}
+
+const { data: products, error: productsError } = await productQuery.limit(5);
+if (productsError) console.error('Products search error:', productsError);
   
   // 2. Cari toko
   const { data: stores, error: storesError } = await supabase
@@ -51,6 +67,30 @@ const { data: products, error: productsError } = await supabase
   
   if (storesError) console.error('Stores search error:', storesError);
   
+  // Proses produk dengan harga diskon
+  const productsWithDistance = (products || []).map(p => ({
+  result_type: 'product',
+  id: p.id,
+  name: p.name,
+  store_id: p.store_id,
+  store_slug: p.stores?.slug,
+  store_name: p.stores?.name,
+  store_lat: p.stores?.latitude,
+  store_lng: p.stores?.longitude,
+  price: p.price,
+  image_url: p.image_url,
+  // DS001: harga setelah diskon
+  final_price: p.has_discount && p.discount_value
+    ? calculateDiscountedPrice(p.price, p.has_discount, p.discount_value)
+    : p.price,
+  has_discount: p.has_discount,
+  discount_value: p.discount_value,
+  distance_km: p.stores?.latitude && p.stores?.longitude 
+    ? haversineDistance(userLat, userLng, p.stores.latitude, p.stores.longitude)
+    : null
+}));
+
+
   // 3. Cari artikel
   const { data: articles, error: articlesError } = await supabase
     .from('news')
@@ -66,22 +106,6 @@ const { data: products, error: productsError } = await supabase
   
   if (articlesError) console.error('Articles search error:', articlesError);
   
-  //distance product dari default address
-  const productsWithDistance = (products || []).map(p => ({
-  result_type: 'product',
-  id: p.id,
-  name: p.name,
-  store_id: p.store_id,
-  store_slug: p.stores?.slug,  // <-- TAMBAHKAN INI
-  store_name: p.stores?.name,
-  store_lat: p.stores?.latitude,
-  store_lng: p.stores?.longitude,
-  price: p.price,
-  image_url: p.image_url,
-  distance_km: p.stores?.latitude && p.stores?.longitude 
-    ? haversineDistance(userLat, userLng, p.stores.latitude, p.stores.longitude)
-    : null
-}));
   
   // Hitung jarak untuk toko
   const storesWithDistance = (stores || []).map(s => ({
@@ -131,6 +155,7 @@ export async function searchStoreProducts(storeId, query) {
   
   const searchTerm = `%${query}%`;
   
+  // DS001: gunakan discount_value, bukan discount_percentage
   const { data, error } = await supabase
     .from('products')
     .select(`
@@ -140,7 +165,7 @@ export async function searchStoreProducts(storeId, query) {
       stock,
       image_url,
       has_discount,
-      discount_percentage,
+      discount_value,
       category_id,
       master_categories (name)
     `)
@@ -153,6 +178,7 @@ export async function searchStoreProducts(storeId, query) {
     return [];
   }
   
+  // DS001: hitung harga diskon dengan calculateDiscountedPrice
   return (data || []).map(p => ({
     id: p.id,
     name: p.name,
@@ -161,8 +187,10 @@ export async function searchStoreProducts(storeId, query) {
     image_url: p.image_url,
     category_name: p.master_categories?.name,
     has_discount: p.has_discount,
-    discount_percentage: p.discount_percentage,
-    final_price: p.has_discount ? p.price * (100 - p.discount_percentage) / 100 : p.price
+    discount_value: p.discount_value,
+    final_price: p.has_discount && p.discount_value
+      ? calculateDiscountedPrice(p.price, p.has_discount, p.discount_value)
+      : p.price
   }));
 }
 
