@@ -1,5 +1,6 @@
 // ========== APP.JSX - ROUTING UTAMA ==========
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate} from 'react-router-dom';
+import { useEffect } from 'react';
 import HomePage from './pages/HomePage';
 //import StoresPage from './pages/StoresPage';
 import StoreDetailPage from './pages/StoreDetailPage';
