@@ -1,14 +1,23 @@
-// ============================================================
-// FILE: src/components/ToastNotification.jsx
-// Toast notifikasi untuk add to cart
-// ============================================================
-
-import { useState, useEffect } from 'react';
+// ========== FILE: src/components/ToastNotification.jsx ==========
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, X } from 'lucide-react';
 
-export default function ToastNotification({ message, duration = 2500, onClose }) {
+export default function ToastNotification({ message, duration = 2500, onClose, sound = null }) {
   const [isVisible, setIsVisible] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
+  const audioRef = useRef(null);
+
+  // DS001: Putar suara notifikasi jika disediakan
+  useEffect(() => {
+    if (sound) {
+      try {
+        audioRef.current = new Audio(sound);
+        audioRef.current.play().catch(e => console.log('Audio play failed:', e));
+      } catch (error) {
+        console.log('Audio error:', error);
+      }
+    }
+  }, [sound]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

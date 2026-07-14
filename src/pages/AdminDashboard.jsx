@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx'
 import ImportProductsModal from '../components/ImportProductsModal';
 import MediaGallery from '../components/MediaGallery'
 import { calculateDiscountedPrice, interpretDiscount } from '../utils/priceUtils'; // DS001
+import NotificationBell from '../components/NotificationBell'; // DS001
 
 export default function AdminDashboard() {
   // -------------------- STATE DASAR --------------------
@@ -598,11 +599,14 @@ const [upsellReportLoading, setUpsellReportLoading] = useState(false);
       <div className="bg-black min-h-screen text-white p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
-  <div>
-    <h1 className="text-3xl font-display">Super Admin Dashboard</h1>
-    <p className="text-gray-400">Selamat datang, Super Admin</p>
-  </div>
-  <div className="flex gap-3">
+          <div>
+            <h1 className="text-3xl font-display">Super Admin Dashboard</h1>
+            <p className="text-gray-400">Selamat datang, Super Admin</p>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex gap-3">
+          <NotificationBell userId={user?.id} />
+        </div>
     {/* ✅ TOMBOL IMPORT PRODUK - UNTUK SUPER ADMIN */}
     <button
       onClick={() => setShowImportModal(true)}
@@ -914,6 +918,10 @@ const [upsellReportLoading, setUpsellReportLoading] = useState(false);
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div><h1 className="text-3xl font-display">Dashboard Store</h1><p className="text-gray-400">{store.name}</p></div>
+         <div className="flex gap-3">
+  <NotificationBell userId={user?.id} />
+  
+</div>
           <button onClick={handleLogout} className="bg-red-500 px-4 py-2 rounded-full text-sm">Logout</button>
         </div>
 

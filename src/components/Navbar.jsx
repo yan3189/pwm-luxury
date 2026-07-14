@@ -1,9 +1,11 @@
 // ========== FILE: src/components/Navbar.jsx ==========
 import { useState, useEffect } from 'react';
-import { Menu, X, User, Shield, LayoutDashboard, Download } from 'lucide-react';
+import { Menu, X, User, LayoutDashboard, Download } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import GlobalSearch from './GlobalSearch';
+import NotificationBell from './NotificationBell';
+import { requestNotificationPermission } from '../main';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,8 +14,9 @@ export default function Navbar() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const navigate = useNavigate();
+  const [user, setUser] = useState(null);
 
-  // PWA install prompt
+  // PWA install prompt (tetap)
   useEffect(() => {
     const handler = (e) => {
       e.preventDefault();
@@ -37,10 +40,11 @@ export default function Navbar() {
     }
   };
 
-  // Auth state
+  // Auth state (tetap sama seperti sebelumnya)
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
       if (user) {
         setIsLoggedIn(true);
         const { data } = await supabase
@@ -49,6 +53,7 @@ export default function Navbar() {
           .eq('id', user.id)
           .maybeSingle();
         if (data?.full_name) setUserName(data.full_name);
+        requestNotificationPermission();
       } else {
         setIsLoggedIn(false);
         setUserName('');
@@ -59,6 +64,8 @@ export default function Navbar() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session);
       if (session) {
+        setUser(session.user);
+        requestNotificationPermission();
         supabase
           .from('users')
           .select('full_name')
@@ -67,6 +74,7 @@ export default function Navbar() {
           .then(({ data }) => setUserName(data?.full_name || ''));
       } else {
         setUserName('');
+        setUser(null);
       }
     });
     return () => subscription.unsubscribe();
@@ -109,21 +117,34 @@ export default function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 backdrop-blur-md bg-black/70 border-b border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* ========== BARIS 1: Logo + Search + Tombol Menu ========== */}
         <div className="flex justify-between items-center h-16 gap-3">
           {/* Logo */}
           <Link to="/" className="text-2xl font-display tracking-wider bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent shrink-0">
             PWM
           </Link>
 
-          {/* Search bar - flex grow untuk memenuhi ruang antara logo dan tombol menu */}
+          {/* Search */}
           <div className="flex-1 max-w-md">
             <GlobalSearch />
           </div>
 
-          {/* Tombol Menu (mobile) & Desktop Menu */}
+          {/* Tombol sebelah kanan: MemberButton + Lonceng + Install + Hamburger */}
           <div className="flex items-center gap-2">
-            {/* Desktop Menu (hidden di mobile) */}
+            {/* Tampil di desktop & mobile: tombol login/dashboard + lonceng */}
+            <MemberButton />
+            {isLoggedIn && <NotificationBell userId={user?.id} />}
+
+            {/* Tombol Install (jika muncul) */}
+            {showInstallBtn && (
+              <button
+                onClick={handleInstallClick}
+                className="hidden md:flex items-center gap-1 bg-yellow-500 text-black px-3 py-2 rounded-full text-sm font-medium hover:bg-yellow-400 transition"
+              >
+                <Download size={14} /> Install
+              </button>
+            )}
+
+            {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-2">
               {menuItems.map((item) => (
                 <Link
@@ -135,7 +156,6 @@ export default function Navbar() {
                   <span className="absolute inset-0 bg-yellow-500/20 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
                 </Link>
               ))}
-              <MemberButton />
               <Link
                 to="/admin/login"
                 className="relative px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-yellow-400 transition group overflow-hidden"
@@ -143,17 +163,9 @@ export default function Navbar() {
                 <span className="relative z-10">Admin</span>
                 <span className="absolute inset-0 bg-yellow-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300 rounded-lg"></span>
               </Link>
-              {showInstallBtn && (
-                <button
-                  onClick={handleInstallClick}
-                  className="flex items-center gap-1 bg-yellow-500 text-black px-3 py-2 rounded-full text-sm font-medium hover:bg-yellow-400 transition"
-                >
-                  <Download size={14} /> Install
-                </button>
-              )}
             </div>
 
-            {/* Mobile menu button */}
+            {/* Mobile hamburger */}
             <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-white">
               {isOpen ? <X /> : <Menu />}
             </button>
@@ -161,7 +173,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Menu (Dropdown) */}
+      {/* Mobile Menu */}
       {isOpen && (
         <div className="md:hidden bg-black/95 backdrop-blur-lg border-t border-white/10">
           <div className="px-4 py-4 space-y-3">
@@ -175,9 +187,6 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
-            <div className="pt-2">
-              <MemberButton />
-            </div>
             <Link
               to="/admin/login"
               onClick={() => setIsOpen(false)}

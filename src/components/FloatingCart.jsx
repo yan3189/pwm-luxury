@@ -95,14 +95,14 @@ useEffect(() => {
                 <img src={item.image_url || 'https://placehold.co/50'} className="w-10 h-10 object-cover rounded" />
                 <div className="flex-1">
                   <p className="font-medium line-clamp-1">{item.name}</p>
-                  <p className="text-yellow-500 text-xs">
-                      Rp {item.original_price.toLocaleString()}
+                  <div className="text-yellow-500 text-xs">
+                      <span>Rp {item.original_price.toLocaleString()}</span>
                       {item.discounted_price < item.original_price && (
                         <div className="text-green-400 text-[10px]">
                           -Rp {((item.original_price - item.discounted_price) * item.quantity).toLocaleString()}
                         </div>
                       )}
-                    </p>
+                    </div>
                   <div className="flex items-center gap-2 mt-1">
                     <button 
                       onClick={() => handleUpdateQuantity(item.product_id, item.quantity - 1)} 
