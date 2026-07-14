@@ -42,10 +42,46 @@ import AdminStockManager from './pages/AdminStockManager';
 import AdminPromotions from './pages/AdminPromotions';
 import AdminMedia from './pages/AdminMedia';
 import ProductDetailPage from './pages/ProductDetailPage';
+import CourierLogin from './pages/CourierLogin'; // DS001
+
+
+// DS001: Komponen untuk redirect otomatis di Capacitor
+function CapacitorRedirect() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkPlatform = async () => {
+      // Hanya jalankan jika berjalan di Capacitor (bukan browser biasa)
+      if (window.Capacitor) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          if (userData?.role === 'courier') {
+            navigate('/courier/dashboard', { replace: true });
+          } else {
+            // Bukan kurir → logout & arahkan ke login kurir
+            await supabase.auth.signOut();
+            navigate('/courier/login', { replace: true });
+          }
+        } else {
+          navigate('/courier/login', { replace: true });
+        }
+      }
+    };
+    checkPlatform();
+  }, [navigate]);
+
+  return null;
+}
 
 function App() {
   return (
     <BrowserRouter>
+    <CapacitorRedirect /> {/* DS001 */}
       <Routes>
         <Route path="/" element={<HomePage />} />
         
@@ -87,6 +123,7 @@ function App() {
       <Route path="/admin/promotions" element={<AdminPromotions />} />
       <Route path="/admin/media" element={<AdminMedia />} />
      <Route path="/product/:productId" element={<ProductDetailPage />} />
+      <Route path="/courier/login" element={<CourierLogin />} />
       </Routes>
       <FloatingContact />
     </BrowserRouter>

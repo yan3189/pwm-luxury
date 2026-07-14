@@ -61,7 +61,7 @@ export default function CourierDashboard() {
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      navigate('/admin/login');
+      navigate('/courier/login');
       return;
     }
     
@@ -73,7 +73,7 @@ export default function CourierDashboard() {
     
     if (error || userData?.role !== 'courier') {
       alert('Akun ini bukan kurir. Hubungi admin.');
-      navigate('/admin/login');
+      navigate('/courier/login');
       return;
     }
     
@@ -504,7 +504,7 @@ export default function CourierDashboard() {
       if (trackingStates[deliveryId]?.active) stopTracking(deliveryId);
     });
     await supabase.auth.signOut();
-    navigate('/admin/login');
+    navigate('/courier/login');
   };
   
   // ========== RENDER ==========
