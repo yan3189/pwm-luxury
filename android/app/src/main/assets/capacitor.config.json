@@ -1,0 +1,9 @@
+{
+	"appId": "com.abstaff",
+	"appName": "ABstaff",
+	"webDir": "dist",
+	"server": {
+		"url": "https://pwm-luxury.vercel.app",
+		"cleartext": false
+	}
+}
