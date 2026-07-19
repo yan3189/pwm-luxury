@@ -29,7 +29,7 @@ export default function GlobalSearch() {
     if (query.length >= 2) {
       debounceRef.current = setTimeout(async () => {
         setLoading(true);
-        const coords = location || { lat: -6.2088, lng: 106.8456 };
+        const coords = location || { lat: -6.990872, lng: 110.422902 };
         const searchResults = await globalSearch(query, coords.lat, coords.lng);
         setResults(searchResults);
         setIsOpen(true);
@@ -73,7 +73,7 @@ export default function GlobalSearch() {
       </div>
 
       {isOpen && totalResults > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl border border-white/10 shadow-xl z-50 max-h-96 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl border border-white/10 shadow-xl z-50 max-h-96 overflow-y-auto mx-auto max-w-2xl">
           <div className="p-2">
             {/* PRODUK */}
             {results.products.length > 0 && (
@@ -84,7 +84,7 @@ export default function GlobalSearch() {
                 {results.products.map(product => (
                   <Link
                     key={product.id}
-                    to={`/product/${product.id}`} // DS001: langsung ke detail produk
+                    to={`/product/${product.id}`}
                     onClick={() => setIsOpen(false)}
                     className="flex items-center gap-3 p-2 hover:bg-gray-800 rounded-lg transition"
                   >
@@ -102,7 +102,6 @@ export default function GlobalSearch() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {/* Harga diskon */}
                         {product.has_discount && product.final_price ? (
                           <>
                             <span className="text-gray-500 text-xs line-through">Rp {product.price?.toLocaleString()}</span>

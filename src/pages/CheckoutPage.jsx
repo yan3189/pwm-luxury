@@ -1225,7 +1225,7 @@ const renderUpsellItems = () => {
                     {/* DS001: Info tambahan */}
 <p className="text-sm text-red-500 text-center mt-2">
   ⚠️ Periksa kembali pesanan Anda ! <br />
-  Pengiriman pada jam operasional toko <strong>11.00 – 23.00 WIB</strong>. <br />
+  Pengiriman pada jam operasional toko <strong>11.00 – 01.30 WIB</strong>. <br />
 </p>
                   </div>
               </div>
