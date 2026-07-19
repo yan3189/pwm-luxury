@@ -1,10 +1,77 @@
 // ========== FILE: src/pages/AllNewsPage.jsx ==========
-// Halaman daftar semua berita dari semua store
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { Calendar, User, ArrowRight } from 'lucide-react';
+
+// Komponen Card News (clean full-image)
+function NewsCard({ item }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setIsVisible(true);
+      },
+      { threshold: 0.3 }
+    );
+    if (cardRef.current) observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  return (
+    <Link
+      to={`/news/${item.id}`}
+      ref={cardRef}
+      className="group relative aspect-[4/5] rounded-2xl overflow-hidden shadow-xl border border-white/10 hover:border-yellow-500/50 transition-all duration-500 block"
+    >
+      {/* Gambar full */}
+      <img
+        src={item.image_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070'}
+        alt={item.title}
+        className="absolute inset-0 w-full h-full object-cover transition duration-700 group-hover:scale-110"
+      />
+
+      {/* Overlay gelap dari bawah */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-80" />
+
+      {/* Info yang muncul dari bawah */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 p-5 transition-all duration-500 ${
+          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
+        } group-hover:translate-y-0 group-hover:opacity-100`}
+      >
+        {/* Tanggal & Author */}
+        <div className="flex items-center gap-3 text-xs text-gray-300 mb-2">
+          <span className="flex items-center gap-1"><Calendar size={12} className="text-yellow-500" />{formatDate(item.published_at)}</span>
+          <span className="flex items-center gap-1"><User size={12} className="text-yellow-500" />{item.stores?.name || 'Store'}</span>
+        </div>
+
+        {/* Judul */}
+        <h3 className="text-lg font-display font-bold text-white line-clamp-2 mb-1">
+          {item.title}
+        </h3>
+
+        {/* Excerpt */}
+        <p className="text-gray-300 text-sm line-clamp-2 mb-3">
+          {item.excerpt || item.content?.substring(0, 100) || ''}
+        </p>
+
+        {/* Tombol */}
+        <span className="inline-flex items-center gap-1 text-yellow-400 text-sm font-medium hover:gap-2 transition-all cursor-pointer">
+          Baca Selengkapnya <ArrowRight size={14} />
+        </span>
+      </div>
+    </Link>
+  );
+}
 
 export default function AllNewsPage() {
   const [news, setNews] = useState([]);
@@ -23,15 +90,11 @@ export default function AllNewsPage() {
   };
 
   const fetchNews = async () => {
-    let query = supabase
+    const { data, error } = await supabase
       .from('news')
-      .select(`
-        *,
-        stores ( id, name, slug )
-      `)
+      .select(`*, stores ( id, name, slug )`)
       .order('published_at', { ascending: false });
 
-    const { data, error } = await query;
     if (error) console.error(error);
     else setNews(data || []);
     setLoading(false);
@@ -40,11 +103,6 @@ export default function AllNewsPage() {
   const filteredNews = filterStore === 'all' 
     ? news 
     : news.filter(item => item.stores?.id === filterStore);
-
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
 
   if (loading) return <div className="bg-black min-h-screen text-white p-8">Memuat berita...</div>;
 
@@ -80,22 +138,7 @@ export default function AllNewsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredNews.map(item => (
-              <Link key={item.id} to={`/news/${item.id}`} className="group">
-                <div className="bg-gray-900/50 rounded-xl overflow-hidden border border-white/10 hover:border-yellow-500/50 transition hover:-translate-y-1">
-                  {item.image_url && (
-                    <img src={item.image_url} alt={item.title} className="w-full h-48 object-cover" />
-                  )}
-                  <div className="p-4">
-                    <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-                      <div className="flex items-center gap-1"><Calendar size={12} className="text-yellow-500" />{formatDate(item.published_at)}</div>
-                      <div className="flex items-center gap-1"><User size={12} className="text-yellow-500" />{item.stores?.name}</div>
-                    </div>
-                    <h2 className="text-xl font-display font-bold group-hover:text-yellow-400 transition line-clamp-2">{item.title}</h2>
-                    <p className="text-gray-400 text-sm mt-2 line-clamp-3">{item.excerpt || item.content?.substring(0, 120)}</p>
-                    <div className="mt-4 text-yellow-500 text-sm flex items-center gap-1 group-hover:gap-2 transition">Baca Selengkapnya <ArrowRight size={14} /></div>
-                  </div>
-                </div>
-              </Link>
+              <NewsCard key={item.id} item={item} />
             ))}
           </div>
         )}

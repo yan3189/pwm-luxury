@@ -69,11 +69,15 @@ export default function NewsDetailPage() {
   <div className="w-full max-w-[360px] mx-auto mb-6">
     <div className="aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 shadow-xl">
       <video
-        src={article.video_url}
-        controls
-        className="w-full h-full object-cover"
-        poster={article.image_url || undefined}
-      />
+  src={article.video_url}
+  autoPlay
+  loop
+  muted
+  playsInline
+  controls
+  className="w-full h-full object-cover"
+  poster={article.image_url || undefined}
+/>
     </div>
   </div>
 )}
