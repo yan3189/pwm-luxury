@@ -697,7 +697,6 @@ const checkPaymentStatus = async () => {
                 </div>
 
 
-
 {/* ===== STATUS PEMBAYARAN ===== */}
 <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-white/10">
   <h3 className="font-semibold text-sm mb-2">💳 Status Pembayaran</h3>
@@ -711,7 +710,6 @@ const checkPaymentStatus = async () => {
       <div className="flex items-center gap-2 mt-1">
         <span className="text-sm">Status:</span>
         <span className={`text-sm font-medium ${
-          // ✅ CEK PAYMENT STATUS DARI MIDTRANS
           order.payment_status === 'settlement' || 
           order.payment_status === 'capture' || 
           order.status === 'paid' || 
@@ -743,96 +741,53 @@ const checkPaymentStatus = async () => {
            order.payment_status === 'deny' ? '❌ Ditolak' :
            order.payment_status === 'refund' ? '🔄 Dikembalikan' :
            order.payment_status || 'Menunggu'}
-
-
         </span>
       </div>
       
-      {/* ============================================================ */}
-      {/* ✅ HANYA TAMPILKAN TOMBOL JIKA STATUS BELUM LUNAS */}
-      {/* ============================================================ */}
-      {(() => {
-        // CEK APAKAH SUDAH LUNAS
-        const isPaid = 
-          order.payment_status === 'settlement' || 
-          order.payment_status === 'capture' || 
-          order.status === 'paid' || 
-          order.status === 'processing' || 
-          order.status === 'shipping' || 
-          order.status === 'delivered';
-        
-        // CEK APAKAH STATUS PENDING (PERLU TINDAKAN)
-        const isPending = 
-          order.payment_status === 'pending' || 
-          order.status === 'pending';
-        
-        // CEK APAKAH EXPIRED ATAU DIBATALKAN
-        const isExpiredOrCancelled = 
-          order.payment_status === 'expire' || 
-          order.payment_status === 'cancel' || 
-          order.payment_status === 'deny';
-        
-        // ✅ JIKA SUDAH LUNAS - TIDAK TAMPILKAN TOMBOL APA PUN
-        if (isPaid) {
-          return (
-            <div className="mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
-              <p className="text-green-400 text-sm flex items-center gap-2">
-                <CheckCircle size={16} />
-                Pembayaran telah lunas. Terima kasih!
-              </p>
-            </div>
-          );
-        }
-        
-        // ✅ JIKA PENDING - TAMPILKAN TOMBOL LANJUTKAN
-        if (isPending && order.snap_token) {
-          return (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={handleRetryPayment}
-                className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
-              >
-                🔄 Lanjutkan Pembayaran
-              </button>
-              <button
-                onClick={handleCancelOrder}
-                className="bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm hover:bg-red-500/30 transition"
-              >
-                Batalkan Pesanan
-              </button>
-            </div>
-          );
-        }
-        
-        // ✅ JIKA EXPIRED/CANCELLED - TAMPILKAN TOMBOL BUAT BARU
-        if (isExpiredOrCancelled) {
-          return (
-            <div className="mt-3">
-              <button
-                onClick={handleRetryPayment}
-                className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition"
-              >
-                🔄 Buat Pembayaran Baru
-              </button>
-            </div>
-          );
-        }
-        
-        // ✅ DEFAULT: TIDAK TAMPILKAN APAPUN
-        return null;
-      })()}
+      {/* TOMBOL LANJUTKAN PEMBAYARAN */}
+      {order.payment_status === 'pending' && order.snap_token && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={handleRetryPayment} className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition">
+            🔄 Lanjutkan Pembayaran
+          </button>
+          
+        </div>
+      )}
+      
+      {order.payment_status === 'expire' && (
+        <div className="mt-3">
+          <button onClick={handleRetryPayment} className="bg-yellow-500 text-black px-4 py-2 rounded-lg text-sm font-semibold hover:bg-yellow-600 transition">
+            🔄 Buat Pembayaran Baru
+          </button>
+        </div>
+      )}
+    </>
+  ) : order.payment_method === 'cod' ? (
+    // ===== TAMPILAN UNTUK COD =====
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-sm">Metode:</span>
+        <span className="text-sm font-medium text-green-400">🛵 Cash on Delivery (COD)</span>
+      </div>
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-sm">Status:</span>
+        <span className="text-sm font-medium text-green-400">✅ Pesanan Diproses</span>
+      </div>
+      <div className="mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
+        <p className="text-sm text-green-400">
+          Pembayaran akan dilakukan saat pesanan sampai. 
+          Nominal yang harus dibayar: <span className="font-bold">Rp {finalTotal.toLocaleString()}</span>
+        </p>
+      </div>
     </>
   ) : (
-    // ============================================================
-    // METODE MANUAL TRANSFER - TAMPILKAN INSTRUKSI
-    // ============================================================
+    // ===== MANUAL TRANSFER =====
     <>
       <div className="text-sm text-gray-400">
         Metode: Transfer Bank (Manual)
         {order.payment_proof_url && <span className="text-green-400 ml-2">✓ Bukti diupload</span>}
       </div>
       
-      {/* ✅ TAMPILKAN INSTRUKSI HANYA JIKA STATUS PENDING */}
       {order.status === 'pending' && !order.payment_proof_url && (
         <div className="mt-3 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
           <p className="text-sm text-yellow-500">Silakan transfer ke rekening berikut:</p>
@@ -842,9 +797,7 @@ const checkPaymentStatus = async () => {
             <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
           </div>
           <p className="text-sm mt-2">
-            Nominal: <span className="font-bold text-yellow-500">
-              Rp {finalTotal.toLocaleString()}
-            </span>
+            Nominal: <span className="font-bold text-yellow-500">Rp {finalTotal.toLocaleString()}</span>
           </p>
           
           <div className="mt-4">
@@ -857,18 +810,10 @@ const checkPaymentStatus = async () => {
         </div>
       )}
       
-      {/* ✅ TAMPILKAN BUKTI YANG SUDAH DIUPLOAD */}
       {order.payment_proof_url && (
         <div className="mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
-          <p className="text-green-500 text-sm flex items-center gap-1">
-            <CheckCircle size={14} /> Bukti sudah diupload
-          </p>
-          <a 
-            href={order.payment_proof_url} 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1"
-          >
+          <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
+          <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
             <Eye size={14} /> Lihat bukti transfer
           </a>
         </div>
@@ -890,41 +835,9 @@ const checkPaymentStatus = async () => {
               </div>
 
 
-              {/* Instruksi Pembayaran */}
- 
-                <div className="p-4 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
-                <h3 className="font-semibold text-yellow-500 mb-2">Instruksi Pembayaran</h3>
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <p className="font-mono text-sm">{store?.bank_name || 'BCA'}</p>
-                  <p className="font-mono text-lg font-bold">{store?.bank_account_number || '1234567890'}</p>
-                  <p className="text-sm">a.n. {store?.bank_account_name || 'PWM Store'}</p>
-                </div>
-                
-                {/* ✅ Gunakan final_total dengan fallback aman */}
-                <p className="text-sm mt-2">
-                  Nominal: <span className="font-bold text-yellow-500">
-                    Rp {finalTotal.toLocaleString()}
-                  </span>
-                </p>
-                
-                {canUpload && (
-                  <div className="mt-4">
-                    <label className="flex items-center gap-2 bg-yellow-500 text-black px-4 py-2 rounded-lg cursor-pointer w-fit hover:bg-yellow-600 transition">
-                      <Upload size={16} /> {uploading ? 'Mengupload...' : 'Upload Bukti Transfer'}
-                      <input type="file" accept="image/*" onChange={handleUploadProof} disabled={uploading} className="hidden" />
-                    </label>
-                    <p className="text-xs text-gray-400 mt-1">Format: JPG, PNG (max 2MB)</p>
-                  </div>
-                )}
-                {order.payment_proof_url && (
-                  <div className="mt-4">
-                    <p className="text-green-500 text-sm flex items-center gap-1"><CheckCircle size={14} /> Bukti sudah diupload</p>
-                    <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 text-sm underline flex items-center gap-1 mt-1">
-                      <Eye size={14} /> Lihat bukti transfer
-                    </a>
-                  </div>
-                 )}
-                  </div>
+              
+                 
+                  
                   </div>
                  )}
 

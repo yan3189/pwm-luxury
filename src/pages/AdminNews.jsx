@@ -21,7 +21,8 @@ export default function AdminNews() {
     excerpt: '', 
     content: '', 
     image_url: '',
-    video_url: '' 
+    video_url: '',
+    link_url: '', link_label: ''  
   })
   const navigate = useNavigate()
 
@@ -67,11 +68,11 @@ export default function AdminNews() {
     setLoading(false)
   }
 
-  const openAddModal = () => {
+ const openAddModal = () => {
     setEditingNews(null)
-    setNewsForm({ title: '', excerpt: '', content: '', image_url: '', video_url: '' })
+    setNewsForm({ title: '', excerpt: '', content: '', image_url: '', video_url: '', link_url: '', link_label: '' })
     setShowModal(true)
-  }
+}
 
   const openEditModal = (item) => {
     setEditingNews(item)
@@ -80,7 +81,9 @@ export default function AdminNews() {
       excerpt: item.excerpt || '',
       content: item.content || '',
       image_url: item.image_url || '',
-      video_url: item.video_url || ''
+      video_url: item.video_url || '',
+      link_url: item.link_url || '',
+link_label: item.link_label || ''
     })
     setShowModal(true)
   }
@@ -120,6 +123,8 @@ export default function AdminNews() {
       content: newsForm.content,
       image_url: newsForm.image_url,
       video_url: newsForm.video_url || null,
+      link_url: newsForm.link_url || null,
+      link_label: newsForm.link_label || null,
       published_at: new Date().toISOString()
     }
 
@@ -254,7 +259,7 @@ export default function AdminNews() {
       {/* ===== MODAL TAMBAH/EDIT ARTIKEL ===== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10">
+          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-display mb-4">{editingNews ? 'Edit Artikel' : 'Tambah Artikel'}</h3>
             <div className="space-y-3">
               <input type="text" placeholder="Judul" className="w-full p-2 rounded bg-black/50 border border-white/20" value={newsForm.title} onChange={e=>setNewsForm({...newsForm, title: e.target.value})} />
@@ -308,6 +313,16 @@ export default function AdminNews() {
                   <p className="text-xs text-gray-400 mt-1">Video URL: {newsForm.video_url}</p>
                 )}
               </div>
+
+<div>
+  <label className="block text-sm text-gray-400 mb-1">URL Link Eksternal (opsional)</label>
+  <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="https://instagram.com/..." value={newsForm.link_url || ''} onChange={e => setNewsForm({...newsForm, link_url: e.target.value})} />
+</div>
+<div>
+  <label className="block text-sm text-gray-400 mb-1">Label Link</label>
+  <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="Lihat di Instagram" value={newsForm.link_label || ''} onChange={e => setNewsForm({...newsForm, link_label: e.target.value})} />
+</div>
+
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={handleSave} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button>

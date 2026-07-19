@@ -23,7 +23,8 @@ export default function AdminEvents() {
     time: '',
     location: '',
     image_url: '',
-    video_url: ''
+    video_url: '',
+    link_url: '', link_label: '' 
   })
   const navigate = useNavigate()
 
@@ -71,23 +72,25 @@ export default function AdminEvents() {
 
   const openAddModal = () => {
     setEditingEvent(null)
-    setEventForm({ title: '', description: '', date: '', time: '', location: '', image_url: '', video_url: '' })
+    setEventForm({ title: '', description: '', date: '', time: '', location: '', image_url: '', video_url: '', link_url: '', link_label: '' })
     setShowModal(true)
-  }
+}
 
   const openEditModal = (event) => {
     setEditingEvent(event)
     setEventForm({
-      title: event.title,
-      description: event.description || '',
-      date: event.date,
-      time: event.time || '',
-      location: event.location || '',
-      image_url: event.image_url || '',
-      video_url: event.video_url || ''
+        title: event.title,
+        description: event.description || '',
+        date: event.date,
+        time: event.time || '',
+        location: event.location || '',
+        image_url: event.image_url || '',
+        video_url: event.video_url || '',
+        link_url: event.link_url || '',
+        link_label: event.link_label || ''
     })
     setShowModal(true)
-  }
+}
 
   // ============================================================
   // HANDLE PILIH GAMBAR DARI GALERI
@@ -118,15 +121,17 @@ export default function AdminEvents() {
     if (!store) return
     
     const eventData = {
-      store_id: store.id,
-      title: eventForm.title,
-      description: eventForm.description,
-      date: eventForm.date,
-      time: eventForm.time || null,
-      location: eventForm.location || null,
-      image_url: eventForm.image_url || null,
-      video_url: eventForm.video_url || null
-    }
+    store_id: store.id,
+    title: eventForm.title,
+    description: eventForm.description,
+    date: eventForm.date,
+    time: eventForm.time || null,
+    location: eventForm.location || null,
+    image_url: eventForm.image_url || null,
+    video_url: eventForm.video_url || null,
+    link_url: eventForm.link_url || null,
+    link_label: eventForm.link_label || null
+}
 
     let eventId = editingEvent?.id
 
@@ -265,7 +270,7 @@ export default function AdminEvents() {
       {/* ===== MODAL TAMBAH/EDIT EVENT ===== */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
+          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-display mb-4">{editingEvent ? 'Edit Event' : 'Tambah Event'}</h3>
             <div className="space-y-3">
               <input type="text" placeholder="Judul event" className="w-full p-2 rounded bg-black/50 border border-white/20" value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} />
@@ -321,6 +326,16 @@ export default function AdminEvents() {
                   <p className="text-xs text-gray-400 mt-1">Video URL: {eventForm.video_url}</p>
                 )}
               </div>
+
+<div>
+  <label className="block text-sm text-gray-400 mb-1">URL Link Eksternal (opsional)</label>
+  <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="https://instagram.com/..." value={eventForm.link_url || ''} onChange={e => setEventForm({...eventForm, link_url: e.target.value})} />
+</div>
+<div>
+  <label className="block text-sm text-gray-400 mb-1">Label Link</label>
+  <input type="text" className="w-full p-2 rounded bg-black/50 border border-white/20" placeholder="Lihat di Instagram" value={eventForm.link_label || ''} onChange={e => setEventForm({...eventForm, link_label: e.target.value})} />
+</div>
+
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={handleSave} className="bg-yellow-500 text-black px-4 py-2 rounded-full flex-1 font-semibold">Simpan</button>

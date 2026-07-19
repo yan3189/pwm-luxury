@@ -1,3 +1,4 @@
+// ========== FILE: src/components/EventList.jsx ==========
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Calendar, MapPin, ChevronRight } from 'lucide-react';
@@ -12,17 +13,23 @@ export default function EventList() {
   }, []);
 
   const fetchEvents = async () => {
+    // Dapatkan tanggal hari ini dalam format YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
+    
     const { data, error } = await supabase
       .from('events')
       .select('*, stores(name)')
-      .order('date', { ascending: true })
-      .limit(4);
+      .gte('date', today) // Hanya event yang tanggalnya >= hari ini
+      .order('date', { ascending: true }) // Urutkan dari yang terdekat
+      .limit(4) // Hapus limit jika ingin menampilkan semua event mendatang
+    ;
+    
     if (!error) setEvents(data || []);
     setLoading(false);
   };
 
   if (loading) return <div className="text-center text-gray-400 py-8">Memuat event...</div>;
-  if (events.length === 0) return null;
+  if (events.length === 0) return null; // Jangan tampilkan apapun jika tidak ada event mendatang
 
   return (
     <div className="py-16 px-4 max-w-7xl mx-auto">

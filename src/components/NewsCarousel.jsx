@@ -1,73 +1,49 @@
 // ========== FILE: src/components/NewsCarousel.jsx ==========
-// News & Article Carousel - mirip store carousel tapi tanpa video, efek pop saat hover
+import { useState, useEffect, useRef } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { Navigation, Pagination } from 'swiper/modules';
+import { Pagination } from 'swiper/modules';
 import { Calendar, User, ArrowRight } from 'lucide-react';
-
 import 'swiper/css';
-import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 
-export default function NewsCarousel() {
-  // Data dummy news & article
-  const newsItems = [
-    {
-      id: 1,
-      title: 'Grand Opening PWM Senayan City',
-      excerpt: 'Store terbaru kami hadir di kawasan Segitiga Emas Jakarta. Nikmati promo spesial untuk member baru.',
-      image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070',
-      date: '15 Mei 2026',
-      author: 'PWM Senayan City',
-      storeSlug: 'senayan-city',
-    },
-    {
-      id: 2,
-      title: 'Program Poin Double di Akhir Pekan',
-      excerpt: 'Setiap transaksi di hari Sabtu dan Minggu mendapatkan poin 2x lipat. Kumpulkan poinmu sekarang!',
-      image: 'https://images.unsplash.com/photo-1556742044-3c52d6e88c62?q=80&w=2070',
-      date: '12 Mei 2026',
-      author: 'PWM Kelapa Gading',
-      storeSlug: 'kelapa-gading',
-    },
-    {
-      id: 3,
-      title: 'Kolaborasi dengan Chef Terkenal',
-      excerpt: 'PWM Surabaya menghadirkan menu eksklusif hasil kolaborasi dengan chef internasional.',
-      image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=2070',
-      date: '10 Mei 2026',
-      author: 'PWM Surabaya',
-      storeSlug: 'surabaya',
-    },
-    {
-      id: 4,
-      title: 'Event Charity: PWM Peduli',
-      excerpt: 'Bergabunglah dalam acara amal kami untuk membantu sesama. Setiap pembelian menyumbang Rp5.000.',
-      image: 'https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?q=80&w=2070',
-      date: '8 Mei 2026',
-      author: 'PWM Bandung',
-      storeSlug: 'bandung',
-    },
-    {
-      id: 5,
-      title: 'Aplikasi PWM Mobile Launching',
-      excerpt: 'Nikmati kemudahan memesan, cek poin, dan tukar voucher langsung dari HP Anda.',
-      image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?q=80&w=2070',
-      date: '5 Mei 2026',
-      author: 'PWM Ecosystem',
-      storeSlug: 'pusat',
-    },
-  ];
+const newsItems = [
+  {
+    id: 1,
+    title: 'Grand Opening PWM Senayan City',
+    excerpt: 'Store terbaru kami hadir di kawasan Segitiga Emas Jakarta.',
+    image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070',
+    date: '15 Mei 2026',
+    author: 'PWM Senayan City',
+  },
+  {
+    id: 2,
+    title: 'Program Poin Double di Akhir Pekan',
+    excerpt: 'Setiap transaksi di hari Sabtu dan Minggu mendapatkan poin 2x lipat.',
+    image: 'https://images.unsplash.com/photo-1556742044-3c52d6e88c62?q=80&w=2070',
+    date: '12 Mei 2026',
+    author: 'PWM Kelapa Gading',
+  },
+  {
+    id: 3,
+    title: 'Kolaborasi dengan Chef Terkenal',
+    excerpt: 'PWM Surabaya menghadirkan menu eksklusif hasil kolaborasi.',
+    image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=2070',
+    date: '10 Mei 2026',
+    author: 'PWM Surabaya',
+  },
+];
 
+export default function NewsCarousel() {
   return (
     <div className="w-full py-4">
-            <Swiper
-        modules={[Pagination]}  // Hanya Pagination, Navigation dihapus
+      <Swiper
+        modules={[Pagination]}
         spaceBetween={16}
         slidesPerView={1.1}
         breakpoints={{
-          640: { slidesPerView: 1.5, spaceBetween: 20 },
-          1024: { slidesPerView: 2.2, spaceBetween: 24 },
-          1280: { slidesPerView: 2.8, spaceBetween: 24 },
+          640: { slidesPerView: 1.8, spaceBetween: 20 },
+          1024: { slidesPerView: 2.5, spaceBetween: 24 },
+          1280: { slidesPerView: 3.2, spaceBetween: 24 },
         }}
         pagination={{ clickable: true }}
         className="news-carousel"
@@ -79,22 +55,7 @@ export default function NewsCarousel() {
         ))}
       </Swiper>
 
-      {/* Custom CSS untuk styling swiper */}
       <style>{`
-        .news-carousel .swiper-button-next,
-        .news-carousel .swiper-button-prev {
-          color: #FFD700;
-          background: rgba(0,0,0,0.5);
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          backdrop-filter: blur(4px);
-        }
-        .news-carousel .swiper-button-next:after,
-        .news-carousel .swiper-button-prev:after {
-          font-size: 16px;
-          font-weight: bold;
-        }
         .news-carousel .swiper-pagination-bullet {
           background: white;
           opacity: 0.5;
@@ -108,49 +69,63 @@ export default function NewsCarousel() {
   );
 }
 
-// ===== NEWS CARD (efek POP saat hover, tanpa video) =====
+// ===== NEWS CARD (CLEAN - SEPERTI PRODUCT CARD) =====
 function NewsCard({ item }) {
-  return (
-    <div className="group relative rounded-2xl overflow-hidden bg-gray-900/50 backdrop-blur-sm border border-white/10 hover:border-yellow-500/50 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl hover:shadow-yellow-500/10">
-      {/* Gambar dengan efek scale saat hover (pop effect) */}
-      <div className="relative h-48 md:h-56 overflow-hidden">
-        <img
-          src={item.image}
-          alt={item.title}
-          className="w-full h-full object-cover transition duration-500 group-hover:scale-110"
-        />
-        {/* Overlay gradien di bagian bawah */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
-      </div>
+  const [isVisible, setIsVisible] = useState(false);
+  const cardRef = useRef(null);
 
-      {/* Konten artikel */}
-      <div className="p-5">
-        {/* Metadata: tanggal & author */}
-        <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-          <div className="flex items-center gap-1">
-            <Calendar size={12} className="text-yellow-500" />
-            <span>{item.date}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <User size={12} className="text-yellow-500" />
-            <span className="line-clamp-1">{item.author}</span>
-          </div>
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setIsVisible(true);
+      },
+      { threshold: 0.3 }
+    );
+    if (cardRef.current) observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={cardRef}
+      className="group relative aspect-[4/5] rounded-2xl overflow-hidden shadow-xl border border-white/10 hover:border-yellow-500/50 transition-all duration-500"
+    >
+      {/* Gambar full */}
+      <img
+        src={item.image}
+        alt={item.title}
+        className="absolute inset-0 w-full h-full object-cover transition duration-700 group-hover:scale-110"
+      />
+
+      {/* Overlay gelap dari bawah */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-80" />
+
+      {/* Info yang muncul dari bawah */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 p-5 transition-all duration-500 ${
+          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
+        } group-hover:translate-y-0 group-hover:opacity-100`}
+      >
+        {/* Tanggal & Author */}
+        <div className="flex items-center gap-3 text-xs text-gray-300 mb-2">
+          <span className="flex items-center gap-1"><Calendar size={12} className="text-yellow-500" />{item.date}</span>
+          <span className="flex items-center gap-1"><User size={12} className="text-yellow-500" />{item.author}</span>
         </div>
 
         {/* Judul */}
-        <h3 className="text-lg md:text-xl font-display font-bold text-white group-hover:text-yellow-400 transition line-clamp-2">
+        <h3 className="text-lg font-display font-bold text-white line-clamp-2 mb-1">
           {item.title}
         </h3>
 
         {/* Excerpt */}
-        <p className="text-gray-400 text-sm mt-2 line-clamp-2">
+        <p className="text-gray-300 text-sm line-clamp-2 mb-3">
           {item.excerpt}
         </p>
 
-        {/* Tombol baca selengkapnya */}
-        <button className="mt-4 flex items-center gap-1 text-yellow-500 text-sm font-medium hover:gap-2 transition-all">
+        {/* Tombol */}
+        <span className="inline-flex items-center gap-1 text-yellow-400 text-sm font-medium hover:gap-2 transition-all cursor-pointer">
           Baca Selengkapnya <ArrowRight size={14} />
-        </button>
+        </span>
       </div>
     </div>
   );

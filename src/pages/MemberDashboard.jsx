@@ -101,6 +101,7 @@ const handleLinkGoogle = async () => {
       .from('member_addresses')
       .select('*')
       .eq('member_id', userId)
+        .eq('is_deleted', false)   // DS001: filter soft delete
       .order('is_default', { ascending: false });
     setAddresses(data || []);
   };
@@ -210,7 +211,7 @@ const handleLinkGoogle = async () => {
     if (confirm('Hapus alamat ini?')) {
       const { error } = await supabase
         .from('member_addresses')
-        .delete()
+            .update({ is_deleted: true })   // DS001: soft delete
         .eq('id', id);
       if (error) alert('Gagal hapus: ' + error.message);
       else fetchAddresses(user.id);

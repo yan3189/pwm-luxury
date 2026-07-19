@@ -146,6 +146,7 @@ export default function CheckoutPage() {
         .from('member_addresses')
         .select('*')
         .eq('member_id', user.id)
+            .eq('is_deleted', false)   // DS001: filter soft delete
         .order('is_default', { ascending: false });
       setAddresses(addrs || []);
     }
@@ -1153,6 +1154,7 @@ const renderUpsellItems = () => {
                   </span>
                 </div>
 
+
                 {/* DS001: Metode Pembayaran dipindahkan ke bawah Total */}
                 <div className="mt-4 pt-3 border-t border-white/10">
                   <h3 className="font-semibold text-sm mb-2">Metode Pembayaran</h3>
@@ -1219,6 +1221,12 @@ const renderUpsellItems = () => {
                 paymentMethod === 'cod' ? 'Pesan Sekarang (COD)' : 'Buat Pesanan'}
                     </button>
                     </div>
+
+                    {/* DS001: Info tambahan */}
+<p className="text-sm text-red-500 text-center mt-2">
+  ⚠️ Periksa kembali pesanan Anda ! <br />
+  Pengiriman pada jam operasional toko <strong>11.00 – 23.00 WIB</strong>. <br />
+</p>
                   </div>
               </div>
 
