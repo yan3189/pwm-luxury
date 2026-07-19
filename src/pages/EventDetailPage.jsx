@@ -64,7 +64,7 @@ export default function EventDetailPage() {
           </div>
         )}
 
-        {/* ===== VIDEO (PORTRAIT) ===== */}
+        {/* =====  VIDEO (PORTRAIT) ===== */}
           {event.video_url && (
             <div className="w-full max-w-[360px] mx-auto mb-6">
               <div className="aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 shadow-xl">
