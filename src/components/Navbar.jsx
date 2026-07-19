@@ -93,26 +93,30 @@ export default function Navbar() {
   ];
 
   const MemberButton = () => {
-    if (isLoggedIn) {
-      return (
-        <Link
-          to="/member/dashboard"
-          className="flex items-center gap-2 bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-full text-sm font-medium border border-yellow-500/50 hover:bg-yellow-500 hover:text-black transition-all duration-300"
-        >
-          <LayoutDashboard size={16} /> Dashboard
-        </Link>
-      );
-    } else {
-      return (
-        <Link
-          to="/member/login"
-          className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-black px-4 py-2 rounded-full text-sm font-bold shadow-lg shadow-yellow-500/20 hover:scale-105 transition"
-        >
-          <User size={16} /> Daftar / Login
-        </Link>
-      );
-    }
-  };
+  if (isLoggedIn) {
+    return (
+      <Link
+        to="/member/dashboard"
+        className="flex items-center gap-2 bg-yellow-500/20 text-yellow-400 px-3 py-2 rounded-full text-sm font-medium border border-yellow-500/50 hover:bg-yellow-500 hover:text-black transition-all duration-300"
+        title="Dashboard"
+      >
+        <LayoutDashboard size={16} />
+        <span className="hidden md:inline">Dashboard</span>
+      </Link>
+    );
+  } else {
+    return (
+      <Link
+        to="/member/login"
+        className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-black px-3 py-2 rounded-full text-sm font-bold shadow-lg shadow-yellow-500/20 hover:scale-105 transition"
+        title="Login"
+      >
+        <User size={16} />
+        <span className="hidden md:inline">Daftar / Login</span>
+      </Link>
+    );
+  }
+};
 
   return (
     <nav className="fixed top-0 w-full z-50 backdrop-blur-md bg-black/70 border-b border-white/10">
@@ -123,10 +127,10 @@ export default function Navbar() {
             PWM
           </Link>
 
-          {/* Search */}
-          <div className="flex-1 max-w-md">
-            <GlobalSearch />
-          </div>
+          {/* Search – melebar saat fokus */}
+<div className="flex-1 max-w-[200px] md:max-w-md focus-within:max-w-[280px] md:focus-within:max-w-lg transition-all duration-300">
+  <GlobalSearch />
+</div>
 
           {/* Tombol sebelah kanan: MemberButton + Lonceng + Install + Hamburger */}
           <div className="flex items-center gap-2">
