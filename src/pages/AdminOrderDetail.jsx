@@ -380,7 +380,8 @@ useEffect(() => {
   const storeIdData = store?.id;
   const addressIdData = order?.address_id;
   
-  const channel = supabase
+  // 1. Listener untuk LOKASI KURIR (INSERT ke tracking_points)
+  const trackingChannel = supabase
     .channel(`tracking-db-${delivery.id}`)
     .on(
       'postgres_changes',
@@ -412,14 +413,35 @@ useEffect(() => {
         }
       }
     )
-    .subscribe((status) => {
-      console.log('📡 Realtime DB Status:', status);
-    });
+    .subscribe();
 
+  // 2. Listener untuk POLYLINE (UPDATE delivery_assignments)
+  const polylineChannel = supabase
+    .channel(`polyline-${delivery.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'delivery_assignments',
+        filter: `id=eq.${delivery.id}`
+      },
+      (payload) => {
+        const newPolyline = payload.new.start_route_polyline;
+        if (newPolyline) {
+          console.log('✅ Polyline updated from DB:', newPolyline);
+          setRoutePolyline(newPolyline); // 🚀 Ganti rute di peta!
+        }
+      }
+    )
+    .subscribe();
+
+  // Cleanup kedua channel
   return () => {
-    console.log('🧹 Cleaning up realtime DB listener for delivery:', delivery.id);
+    console.log('🧹 Cleaning up realtime DB listeners for delivery:', delivery.id);
     isMounted = false;
-    supabase.removeChannel(channel);
+    supabase.removeChannel(trackingChannel);
+    supabase.removeChannel(polylineChannel);
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
   };
 }, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
