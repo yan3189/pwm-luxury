@@ -204,57 +204,79 @@ export default function MemberOrderDetail() {
     console.log('===== FETCH COMPLETE =====');
   };
 
- // ========== REALTIME SUBSCRIPTION (POSTGRES DATABASE CHANGES) ==========
-  useEffect(() => {
-    if (!delivery || !delivery.id) return;
-    
-    console.log('🔧 Setting up realtime DB listener for delivery:', delivery.id);
-    let isMounted = true;
-    
-    const destLat = order?.shipping_latitude;
-    const destLng = order?.shipping_longitude;
-    const storeIdData = store?.id;
-    const addressIdData = order?.address_id;
+// ========== REALTIME SUBSCRIPTION (POSTGRES DATABASE CHANGES) ==========
+useEffect(() => {
+  if (!delivery || !delivery.id) return;
+  
+  console.log('🔧 Setting up realtime DB listener for delivery:', delivery.id);
+  let isMounted = true;
+  
+  const destLat = order?.shipping_latitude;
+  const destLng = order?.shipping_longitude;
+  const storeIdData = store?.id;
+  const addressIdData = order?.address_id;
 
-    // Mendengarkan data baru yang dimasukkan oleh Service Java ke tabel tracking_points
-    const channel = supabase
-      .channel(`tracking-db-${delivery.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT', // Setiap kali Service Java memasukkan koordinat baru
-          schema: 'public',
-          table: 'tracking_points', // Nama tabel riwayat koordinat kamu
-          filter: `delivery_id=eq.${delivery.id}`
-        },
-        async (payload) => {
-          if (!isMounted) return;
-          console.log('📍🔥 DATABASE LOCATION INSERT DETECTED!', payload.new);
+  // 1. Listener untuk LOKASI KURIR (INSERT ke tracking_points)
+  const trackingChannel = supabase
+    .channel(`tracking-db-${delivery.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'tracking_points',
+        filter: `delivery_id=eq.${delivery.id}`
+      },
+      async (payload) => {
+        if (!isMounted) return;
+        console.log('📍🔥 DATABASE LOCATION INSERT DETECTED!', payload.new);
 
-          // Ambil latitude & longitude dari row baru di database
-          const lat = payload.new.latitude;
-          const lng = payload.new.longitude;
-          const heading = payload.new.heading || 0;
+        const lat = payload.new.latitude;
+        const lng = payload.new.longitude;
+        const heading = payload.new.heading || 0;
 
-          setIsTrackingActive(true);
-          setCourierHeading(heading);
-          setCourierLocation([lat, lng]); // 🚀 MAP AUTOMATICALLY PAN & UPDATE!
+        setIsTrackingActive(true);
+        setCourierHeading(heading);
+        setCourierLocation([lat, lng]);
 
-          if (destLat && destLng && lat && lng) {
-            const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
-            setEta(newEta);
-          }
+        if (destLat && destLng && lat && lng) {
+          const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
+          setEta(newEta);
         }
-      )
-      .subscribe((status) => {
-        console.log('📡 Realtime DB Status:', status);
-      });
+      }
+    )
+    .subscribe();
 
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+  // 2. Listener untuk POLYLINE (UPDATE delivery_assignments)
+  const polylineChannel = supabase
+    .channel(`polyline-${delivery.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'delivery_assignments',
+        filter: `id=eq.${delivery.id}`
+      },
+      (payload) => {
+        const newPolyline = payload.new.start_route_polyline;
+        if (newPolyline) {
+          console.log('✅ Polyline updated from DB:', newPolyline);
+          setRoutePolyline(newPolyline); // 🚀 Ganti rute di peta!
+        }
+      }
+    )
+    .subscribe();
+
+  // Cleanup kedua channel
+  return () => {
+    isMounted = false;
+    supabase.removeChannel(trackingChannel);
+    supabase.removeChannel(polylineChannel);
+  };
+}, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+
+
   const handleUploadProof = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
