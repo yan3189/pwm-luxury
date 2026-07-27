@@ -204,89 +204,78 @@ export default function MemberOrderDetail() {
     console.log('===== FETCH COMPLETE =====');
   };
 
-  // ========== REALTIME SUBSCRIPTION ==========
-  useEffect(() => {
-    if (!delivery || !delivery.id) {
-      console.log('❌ No delivery assignment, skipping realtime subscription');
-      return;
-    }
-    
-    console.log('🔧 Setting up realtime subscription for delivery:', delivery.id);
-    
-    let lastUpdateTime = Date.now();
-    let statusCheckInterval = null;
-    let isMounted = true;
-    
-    const destLat = order?.shipping_latitude;
-    const destLng = order?.shipping_longitude;
-    const storeIdData = store?.id;
-    const addressIdData = order?.address_id;
-    
-    const channel = supabase
-      .channel(`tracking:${delivery.id}`)
-      .on('broadcast', { event: 'location-update' }, async (payload) => {
+// ========== REALTIME SUBSCRIPTION (POSTGRES DATABASE CHANGES) ==========
+useEffect(() => {
+  if (!delivery || !delivery.id) return;
+  
+  console.log('🔧 Setting up realtime DB listener for delivery:', delivery.id);
+  let isMounted = true;
+  
+  const destLat = order?.shipping_latitude;
+  const destLng = order?.shipping_longitude;
+  const storeIdData = store?.id;
+  const addressIdData = order?.address_id;
+
+  // 1. Listener untuk LOKASI KURIR (INSERT ke tracking_points)
+  const trackingChannel = supabase
+    .channel(`tracking-db-${delivery.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'tracking_points',
+        filter: `delivery_id=eq.${delivery.id}`
+      },
+      async (payload) => {
         if (!isMounted) return;
-        console.log('📍🔥 LOCATION UPDATE RECEIVED! Payload:', payload);
-        
-        const { lat, lng, heading } = payload.payload;
-        console.log('📍 Location:', lat, lng, 'Heading:', heading);
-        
-        lastUpdateTime = Date.now();
-        if (isTrackingActive === 'timeout') setIsTrackingActive(true);
-        if (heading !== undefined) setCourierHeading(heading);
-        
+        console.log('📍🔥 DATABASE LOCATION INSERT DETECTED!', payload.new);
+
+        const lat = payload.new.latitude;
+        const lng = payload.new.longitude;
+        const heading = payload.new.heading || 0;
+
+        setIsTrackingActive(true);
+        setCourierHeading(heading);
         setCourierLocation([lat, lng]);
-        
+
         if (destLat && destLng && lat && lng) {
           const newEta = await calculateETA(lat, lng, destLat, destLng, storeIdData, addressIdData);
           setEta(newEta);
         }
-        
-        if (mapRef.current && lat && lng) {
-          mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: true });
-        }
-      })
-      .on('broadcast', { event: 'tracking-status' }, (payload) => {
-        if (!isMounted) return;
-        console.log('📡 Tracking status update:', payload.payload);
-        const { status } = payload.payload;
-        if (status === 'active') { 
-          setIsTrackingActive(true); 
-          lastUpdateTime = Date.now();
-          console.log('✅ Tracking status: ACTIVE');
-        } else if (status === 'inactive') {
-          setIsTrackingActive(false);
-          console.log('❌ Tracking status: INACTIVE');
-        }
-      })
-      .on('broadcast', { event: 'route-updated' }, (payload) => {
-        console.log('🔄 Route updated! New polyline received:', payload.payload);
-        const { polyline } = payload.payload;
-        if (polyline) {
-          console.log('✅ Updating route polyline to start route');
-          setRoutePolyline(polyline);
-        }
-      })
-      .subscribe((status) => {
-        console.log('📡 Realtime subscription status:', status);
-      });
-    
-    statusCheckInterval = setInterval(() => {
-      if (!isMounted) return;
-      if (isTrackingActive === true && Date.now() - lastUpdateTime > 30000) {
-        console.log('⏰ No location update for 30 seconds, marking tracking as timeout');
-        setIsTrackingActive('timeout');
       }
-    }, 10000);
-    
-    return () => {
-      console.log('🧹 Cleaning up realtime subscription for delivery:', delivery.id);
-      isMounted = false;
-      supabase.removeChannel(channel);
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (statusCheckInterval) clearInterval(statusCheckInterval);
-    };
-  }, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+    )
+    .subscribe();
+
+  // 2. Listener untuk POLYLINE (UPDATE delivery_assignments)
+  const polylineChannel = supabase
+    .channel(`polyline-${delivery.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'delivery_assignments',
+        filter: `id=eq.${delivery.id}`
+      },
+      (payload) => {
+        const newPolyline = payload.new.start_route_polyline;
+        if (newPolyline) {
+          console.log('✅ Polyline updated from DB:', newPolyline);
+          setRoutePolyline(newPolyline); // 🚀 Ganti rute di peta!
+        }
+      }
+    )
+    .subscribe();
+
+  // Cleanup kedua channel
+  return () => {
+    isMounted = false;
+    supabase.removeChannel(trackingChannel);
+    supabase.removeChannel(polylineChannel);
+  };
+}, [delivery, order?.shipping_latitude, order?.shipping_longitude, store?.id, order?.address_id]);
+
 
   const handleUploadProof = async (e) => {
     const file = e.target.files[0];
